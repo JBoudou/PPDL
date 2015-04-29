@@ -16,12 +16,10 @@ module type HINTIKKA
     val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
     val for_all : (elt -> bool) -> t -> bool
     val exists : (elt -> bool) -> t -> bool
+    val compare : t -> t -> int
 
     val depth : t -> Loc.t
 
-    (* both have a type and the intersection of types is not empty (TODO: move it ?) *)
-    val same_type : t -> t -> bool
-    val compare : t -> t -> int
   end with
     type elt = HForm.t
 
@@ -45,12 +43,6 @@ module type HINTIKKA
 
     val fold_product : ('a -> elt -> elt -> 'a) -> 'a -> t -> t -> 'a
 
-    (*
-    let fold_product f acc t1 t2 =
-      let second e1 acc =
-        fold (fun e2 acc -> f acc e1 e2) t2 acc
-      in fold second t1 acc 
-    *)
   end with
     type elt = HSet.t
 
@@ -84,42 +76,26 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
 
     type t = (H.HSet.t * H.HSet.t * H.HSet.t)
 
-    (*
-    let all_plugs h =
-      let with_head head l =
-        let head_loc = H.HSet.depth head in
-        let make_triple cur (plugs, left, right) =
-          match H.HSet.depth cur with
-            | Loc.L::t when t = head_loc ->
-                let nplugs = List.fold_left
-                              (fun p r -> if H.HSet.same_type cur r then (head, cur, r)::p else p)
-                              plugs right
-                in (nplugs, cur::left, right)
-            | Loc.R::t when t = head_loc ->
-                let nplugs = List.fold_left
-                              (fun p l -> if H.HSet.same_type cur l then (head, l, cur)::p else p)
-                              plugs left
-                in (nplugs, left, cur::right)
-            | _ -> (plugs, left, right)
-        in
-        let (plugs, _, _) = H.SetHSet.fold make_triple h (l, [], [])
-        in plugs
-      in H.SetHSet.fold with_head h []
-    *)
-
-    let all h =
-      let aux s acc =
-        let loc = H.HSet.depth s in
-        H.SetHSet.fold_product (fun acc l r -> if H.HSet.same_type l r then (s,l,r)::acc else acc)
-          acc (H.at_depth h (Loc.L::loc)) (H.at_depth h (Loc.R::loc))
-      in H.fold_set aux h []
-
-    let depth (b,_,_) = let base = H.HSet.depth b in [(Loc.L::base); (Loc.R::base)]
+    let same_type l r =
+      let simple_mem form set =
+        H.HSet.mem (H.HSet.depth set, form) set
+      in
+      List.exists (fun t -> simple_mem (HForm.PH (Loc.L, t)) l && simple_mem (HForm.PH (Loc.R, t)) r)
+                  [1;2]
 
     let type_list (s,l,r) =
       let loc = H.HSet.depth s in
       List.filter (fun t -> H.HSet.mem ((Loc.L::loc), HForm.PH (Loc.L, t)) l &&
                             H.HSet.mem ((Loc.R::loc), HForm.PH (Loc.R, t)) r ) [1;2]
+
+    let all h =
+      let aux s acc =
+        let loc = H.HSet.depth s in
+        H.SetHSet.fold_product (fun acc l r -> if same_type l r then (s,l,r)::acc else acc)
+          acc (H.at_depth h (Loc.L::loc)) (H.at_depth h (Loc.R::loc))
+      in H.fold_set aux h []
+
+    let depth (b,_,_) = let base = H.HSet.depth b in [(Loc.L::base); (Loc.R::base)]
 
     let compare (s1,l1,r1) (s2,l2,r2) =
       chain_compare [ lazy (H.HSet.compare s1 s2);
@@ -137,14 +113,6 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
       | Initial
       | Zero of Loc.dir * Plug.t
       | Nonzero of Loc.dir * Plug.t * Plug.t
-
-    (*
-    let belongs socket hset =
-      let loc = H.HSet.depth hset in
-      match socket with
-      | [] -> loc = []
-      | (_,l,r)::_ -> (loc = H.HSet.depth l) || (loc = H.HSet.depth r)
-    *)
 
     let compare = Pervasives.compare
 
@@ -331,6 +299,6 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
 
 
   let satisfies form (_,m) =
-    Thread.exists (fun (set,_) -> H.HSet.mem ([], form) set) (Model.find Initial m)
+    Thread.exists (fun (set,_) -> H.HSet.mem ([], form) set) (Model.find DirSocket.Initial m)
 
 end

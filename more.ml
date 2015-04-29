@@ -4,6 +4,8 @@ let rec chain_compare = function
       let cmp = Lazy.force h in
       if cmp != 0 then cmp else chain_compare t
 
+let ( --> ) a b = (not a) || b
+
 module List
 = struct
   include List

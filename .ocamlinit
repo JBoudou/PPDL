@@ -2,3 +2,5 @@
 #load "form.cmo";;
 #load "loc.cmo";;
 #load "hForm.cmo";;
+#load "setSet.cmo";;
+#load "elimination.cmo";;
