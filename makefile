@@ -1,7 +1,7 @@
 CAMLC=ocamlc
 CAMLDEP=ocamldep
 
-SRCS= form.ml
+SRCS= form.ml hForm.ml more.ml loc.ml
 OBJS= ${SRCS:.ml=.cmo}
 
 all: .depend ${OBJS}
