@@ -9,3 +9,7 @@ let rec compare l1 l2 = match (l1, l2) with
   | (h1::t1, h2::t2) when h1 = h2 -> compare t1 t2
   | (L::_, _) -> -1
   | (R::_, _) ->  1
+
+let other_dir = function
+  | L -> R
+  | R -> L
