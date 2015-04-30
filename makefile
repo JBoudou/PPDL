@@ -1,13 +1,14 @@
 CAMLC=ocamlc
 CAMLDEP=ocamldep
+CAMLOPT=ocamlopt
 
-SRCS= form.ml hForm.ml more.ml loc.ml setSet.ml hintikka.ml elimination.ml
+SRCS= more.ml form.ml loc.ml hForm.ml setSet.ml hintikka.ml elimination.ml test.ml
 OBJS= ${SRCS:.ml=.cmo}
 
-all: .depend ${OBJS}
+all: .depend ${OBJS} test
 
 .depend: $(SRCS)
-	$(CAMLDEP) $^ > .depend
+	$(CAMLDEP) $^ test.ml > .depend
 
 include .depend
 
@@ -15,14 +16,18 @@ include .depend
 #	cd doc && $(MAKE)
 
 clean:
-	-rm -v ${OBJS} {SRCS:.ml=.cmi}
+	-rm -v ${OBJS} {SRCS:.ml=.cmi} test
 #	cd doc && $(MAKE) clean
 
 .PHONY: all clean
 
-.SUFFIXES: .ml .mli .cmo .cmi
+.SUFFIXES: .ml .mli .cmo .cmi .cmx
 
 .ml.cmo:
 	$(CAMLC) -c $(COMPFLAGS) $<
 
+.ml.cmx:
+	$(CAMLOPT) -c $(COMPFLAGS) $<
 
+test: ${SRCS:.ml=.cmx}
+	$(CAMLOPT) -o test $^

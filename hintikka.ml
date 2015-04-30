@@ -11,6 +11,7 @@ module HSet
   let fischer_ladner lf =
     let rec aux acc = function
       | [] -> acc
+      | h::t when (mem h acc) -> aux acc t
       | ((m, Diam (Atom _, phi)) as h)::t ->
           aux (add h acc) ((m, phi)::t)
       | ((m, Neg phi) as h)::t ->
@@ -20,9 +21,9 @@ module HSet
       | ((m, Diam (Seq (alpha, beta), phi)) as h)::t ->
           aux (add h acc) ((m, Diam (alpha, Diam (beta, phi)))::t)
       | ((m, Diam (Choice (alpha, beta), phi)) as h)::t ->
-          aux (add h acc) ((m, Diam (alpha, Q phi))::(m, Diam (beta, Q phi))::(m, phi)::t)
-      | ((m, Diam (Iter alpha, phi)) as h)::t ->
-          aux (add h acc) ((m, Diam (alpha, Q (Diam (Iter alpha, phi))))::(m, phi)::t)
+          aux (add h acc) ((m, Diam (alpha, phi))::(m, Diam (beta, phi))::t)
+      | ((m, (Diam (Iter alpha, phi) as form)) as h)::t ->
+          aux (add h acc) ((m, Diam (alpha, form))::(m, phi)::t)
       | ((m, Diam (CPar (alpha, beta), phi)) as h)::t ->
           aux (add h acc) ((L::m, Diam (alpha, PH (L, 1)))::(L::m, Diam (alpha, PH (L, 2)))::
                           (R::m, Diam (beta, PH (R, 1)))::(R::m, Diam (beta, PH (R, 2)))::(m, phi)::t)
@@ -53,11 +54,9 @@ module HSet
         | Diam (Test phi, psi) ->
             mem (loc, phi) set && mem (loc, psi) set
         | Diam (Choice (alpha, beta), phi) ->
-            mem (loc, Diam (alpha, Q phi)) set || mem (loc, Diam (beta, Q phi)) set
+            mem (loc, Diam (alpha, phi)) set || mem (loc, Diam (beta, phi)) set
         | Diam (Iter alpha, phi) ->
-            mem (loc, phi) set || mem (loc, Diam (alpha, Q (Diam (Iter alpha, phi)))) set
-        | Q phi ->
-            mem (loc, phi) set
+            mem (loc, phi) set || mem (loc, Diam (alpha, form)) set
         | _ -> true
     in
     let check_ok_backward (loc, form) =
@@ -69,13 +68,11 @@ module HSet
         | Diam (Test phi, psi) ->
             (mem (loc, phi) set && mem (loc, psi) set) --> (mem (loc, form) set)
         | Diam (Choice (alpha, beta), phi) ->
-            (mem (loc, Diam (alpha, Q phi)) set || mem (loc, Diam (beta, Q phi)) set)
+            (mem (loc, Diam (alpha, phi)) set || mem (loc, Diam (beta, phi)) set)
             --> (mem (loc, form) set)
         | Diam (Iter alpha, phi) ->
-            (mem (loc, phi) set || mem (loc, Diam (alpha, Q (Diam (Iter alpha, phi)))) set)
+            (mem (loc, phi) set || mem (loc, Diam (alpha, form)) set)
             --> (mem (loc, form) set)
-        | Q phi ->
-            (mem (loc, phi) set) --> (mem (loc, form) set)
         | _ -> true
       )
     in

@@ -15,7 +15,6 @@ and form =
   | Neg of form
   | Diam of prog * form
   | PH of dir * int
-  | Q of form
 
 type t = Loc.t * form
 
@@ -51,9 +50,6 @@ let rec compare_form phi psi = match (phi, psi) with
   | (PH (R, a), PH (R, b)) -> a - b
   | (PH (R, _), _) -> -1
   | (_, PH (R, _)) ->  1
-  | (Q phi, Q psi) -> compare_form phi psi
-  | (Q _, _) -> -1
-  | (_, Q _) ->  1
   | (Neg a, Neg b) -> compare_form a b
   | (Neg _, _) ->  1
   | (_, Neg _) -> -1

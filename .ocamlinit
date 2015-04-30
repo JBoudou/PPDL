@@ -3,4 +3,5 @@
 #load "loc.cmo";;
 #load "hForm.cmo";;
 #load "setSet.cmo";;
+#load "hintikka.cmo";;
 #load "elimination.cmo";;

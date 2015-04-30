@@ -41,8 +41,11 @@ let flnu = HSet.neg_closure flcu
 
 
 let hins = SetHSet.filtered_subsets (HSet.is_Hintikka flcs) flns
+let hinu = SetHSet.filtered_subsets (HSet.is_Hintikka flcu) flnu
 
 ;;
 ( pp_print_int out (SetHSet.cardinal hins) ;
+  pp_print_newline out () ;
+  pp_print_int out (SetHSet.cardinal hinu) ;
   pp_print_newline out ()
 )
