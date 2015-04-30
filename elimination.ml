@@ -12,6 +12,7 @@ module type HINTIKKA
 
     val empty : t
     val mem : elt -> t -> bool
+    val sat : elt -> t -> bool
     val add : elt -> t -> t
     val fold : (elt -> 'a -> 'a) -> t -> 'a -> 'a
     val for_all : (elt -> bool) -> t -> bool
@@ -78,15 +79,15 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
 
     let same_type l r =
       let simple_mem form set =
-        H.HSet.mem (H.HSet.depth set, form) set
+        H.HSet.sat (H.HSet.depth set, form) set
       in
       List.exists (fun t -> simple_mem (HForm.PH (Loc.L, t)) l && simple_mem (HForm.PH (Loc.R, t)) r)
                   [1;2]
 
     let type_list (s,l,r) =
       let loc = H.HSet.depth s in
-      List.filter (fun t -> H.HSet.mem ((Loc.L::loc), HForm.PH (Loc.L, t)) l &&
-                            H.HSet.mem ((Loc.R::loc), HForm.PH (Loc.R, t)) r ) [1;2]
+      List.filter (fun t -> H.HSet.sat ((Loc.L::loc), HForm.PH (Loc.L, t)) l &&
+                            H.HSet.sat ((Loc.R::loc), HForm.PH (Loc.R, t)) r ) [1;2]
 
     let all h =
       let aux s acc =
@@ -121,10 +122,10 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
       (s_loc = H.HSet.depth s2) &&
       let check s1 l1 r1 s2 t = function
         | (loc, HForm.Diam (HForm.CPar (alpha, beta), phi)) as lf ->
-            (not (H.HSet.mem (loc, phi) s2 &&
-                  H.HSet.mem (Loc.L::loc, HForm.Diam (alpha, HForm.PH (Loc.L, t))) l1 &&
-                  H.HSet.mem (Loc.R::loc, HForm.Diam (beta,  HForm.PH (Loc.R, t))) r1 ))
-            || H.HSet.mem lf s1
+            (not (H.HSet.sat (loc, phi) s2 &&
+                  H.HSet.sat (Loc.L::loc, HForm.Diam (alpha, HForm.PH (Loc.L, t))) l1 &&
+                  H.HSet.sat (Loc.R::loc, HForm.Diam (beta,  HForm.PH (Loc.R, t))) r1 ))
+            || H.HSet.sat lf s1
         | _ -> true
       in
       let forms = H.forms_with_loc h s_loc in
@@ -218,13 +219,13 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
     let loc = H.HSet.depth set in
     let filter_form lf acc = match lf with
       | (loc, HForm.Diam (HForm.Atom str2, phi)) as form
-        when ((str2 = str) && (not (H.HSet.mem form set))) ->
+        when ((str2 = str) && (not (H.HSet.sat form set))) ->
           H.HSet.add (loc, phi) acc
       | _ -> acc
     in
     let forms = H.HSet.fold filter_form (H.forms_with_loc h loc) H.HSet.empty in
     let check dest =
-      H.HSet.for_all (fun form -> not (H.HSet.mem form dest)) forms
+      H.HSet.for_all (fun form -> not (H.HSet.sat form dest)) forms
     in
     Thread.filter_set check thread
 
@@ -234,7 +235,7 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
 
   and reach_test form set h thread =
     let loc = H.HSet.depth set in
-    if H.HSet.mem (loc, form) set then H.SetHSet.singleton set else H.SetHSet.empty
+    if H.HSet.sat (loc, form) set then H.SetHSet.singleton set else H.SetHSet.empty
 
   and reach_choice alpha beta cur hm thread =
     H.SetHSet.union (reachable alpha cur hm thread) (reachable beta cur hm thread)
@@ -284,7 +285,7 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
       let check_for_removal (set, hash) =
         let check_form = function
           | (loc, HForm.Diam (alpha, phi)) ->
-              H.SetHSet.for_all (fun dest -> not (H.HSet.mem (loc, phi) dest))
+              H.SetHSet.for_all (fun dest -> not (H.HSet.sat (loc, phi) dest))
                                 (reachable alpha set (h,m) thread)
           | _ -> false
         in
@@ -299,6 +300,6 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
 
 
   let satisfies form (_,m) =
-    Thread.exists (fun (set,_) -> H.HSet.mem ([], form) set) (Model.find DirSocket.Initial m)
+    Thread.exists (fun (set,_) -> H.HSet.sat ([], form) set) (Model.find DirSocket.Initial m)
 
 end

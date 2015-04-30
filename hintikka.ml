@@ -11,17 +11,18 @@ module HSet
   let fischer_ladner lf =
     let rec aux acc = function
       | [] -> acc
+      | (_, Bot)::t -> aux acc t
       | h::t when (mem h acc) -> aux acc t
       | ((m, Diam (Atom _, phi)) as h)::t ->
           aux (add h acc) ((m, phi)::t)
       | ((m, Neg phi) as h)::t ->
           aux acc ((m, phi)::t)
       | ((m, Diam (Test phi, psi)) as h)::t ->
-          aux (add h acc) ((m, phi)::(m, psi)::t)
+          aux acc ((m, phi)::(m, psi)::t)
       | ((m, Diam (Seq (alpha, beta), phi)) as h)::t ->
-          aux (add h acc) ((m, Diam (alpha, Diam (beta, phi)))::t)
+          aux acc ((m, Diam (alpha, Diam (beta, phi)))::t)
       | ((m, Diam (Choice (alpha, beta), phi)) as h)::t ->
-          aux (add h acc) ((m, Diam (alpha, phi))::(m, Diam (beta, phi))::t)
+          aux acc ((m, Diam (alpha, phi))::(m, Diam (beta, phi))::t)
       | ((m, (Diam (Iter alpha, phi) as form)) as h)::t ->
           aux (add h acc) ((m, Diam (alpha, form))::(m, phi)::t)
       | ((m, Diam (CPar (alpha, beta), phi)) as h)::t ->
@@ -29,6 +30,18 @@ module HSet
                           (R::m, Diam (beta, PH (R, 1)))::(R::m, Diam (beta, PH (R, 2)))::(m, phi)::t)
       | h::t -> aux (add h acc) t
     in aux empty [lf]
+
+  let sat (m, phi) set =
+    let rec aux = function
+      | Bot -> false
+      | Neg phi -> not (aux phi)
+      | Diam (Test phi, psi) -> (aux phi) && (aux psi)
+      | Diam (Seq (alpha, beta), phi) -> aux (Diam (alpha, Diam (beta, phi)))
+      | Diam (Choice (alpha, beta), phi) ->
+         (aux (Diam (alpha, phi))) || (aux (Diam (beta, phi)))
+      | phi -> mem (m, phi) set
+    in
+    aux phi
 
   let neg_closure set =
     fold (fun (loc, form) acc -> add (loc, neg form) acc) set set
@@ -42,39 +55,21 @@ module HSet
   let is_Hintikka flc set = 
     let set_loc = depth set in
     let check_possible (loc, form) =
-      loc = set_loc &&
-      match form with
-        | Bot -> false
-        | phi -> not (mem (loc, neg phi) set)
+      loc = set_loc
     in
     let check_ok_forward (loc, form) =
       match form with
-        | Diam (Seq (alpha, beta), phi) ->
-            mem (loc, Diam (alpha, Diam (beta, phi))) set
-        | Diam (Test phi, psi) ->
-            mem (loc, phi) set && mem (loc, psi) set
-        | Diam (Choice (alpha, beta), phi) ->
-            mem (loc, Diam (alpha, phi)) set || mem (loc, Diam (beta, phi)) set
         | Diam (Iter alpha, phi) ->
             mem (loc, phi) set || mem (loc, Diam (alpha, form)) set
         | _ -> true
     in
     let check_ok_backward (loc, form) =
-      loc != set_loc || (
-      (mem (loc, form) set || mem (loc, neg form) set) &&
+      loc != set_loc ||
       match form with
-        | Diam (Seq (alpha, beta), phi) ->
-            (mem (loc, Diam (alpha, Diam (beta, phi))) set) --> (mem (loc, form) set)
-        | Diam (Test phi, psi) ->
-            (mem (loc, phi) set && mem (loc, psi) set) --> (mem (loc, form) set)
-        | Diam (Choice (alpha, beta), phi) ->
-            (mem (loc, Diam (alpha, phi)) set || mem (loc, Diam (beta, phi)) set)
-            --> (mem (loc, form) set)
         | Diam (Iter alpha, phi) ->
             (mem (loc, phi) set || mem (loc, Diam (alpha, form)) set)
             --> (mem (loc, form) set)
         | _ -> true
-      )
     in
     if for_all check_possible set then
       if (not (is_empty set)) && (for_all check_ok_forward set)
