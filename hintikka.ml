@@ -14,7 +14,7 @@ module HSet
       | ((m, Diam (Atom _, phi)) as h)::t ->
           aux (add h acc) ((m, phi)::t)
       | ((m, Neg phi) as h)::t ->
-          aux (add h acc) ((m, phi)::t)
+          aux acc ((m, phi)::t)
       | ((m, Diam (Test phi, psi)) as h)::t ->
           aux (add h acc) ((m, phi)::(m, psi)::t)
       | ((m, Diam (Seq (alpha, beta), phi)) as h)::t ->
@@ -29,9 +29,14 @@ module HSet
       | h::t -> aux (add h acc) t
     in aux empty [lf]
 
+  let neg_closure set =
+    fold (fun (loc, form) acc -> add (loc, neg form) acc) set set
+
   let depth s =
-    let (loc, _) = choose s in
-    loc
+    try
+      let (loc, _) = choose s in
+      loc
+    with Not_found -> []
 
   let is_Hintikka flc set = 
     let set_loc = depth set in
@@ -56,20 +61,29 @@ module HSet
         | _ -> true
     in
     let check_ok_backward (loc, form) =
-      loc != set_loc ||
+      loc != set_loc || (
+      (mem (loc, form) set || mem (loc, neg form) set) &&
       match form with
         | Diam (Seq (alpha, beta), phi) ->
-            mem (loc, Diam (alpha, Diam (beta, phi))) set
+            (mem (loc, Diam (alpha, Diam (beta, phi))) set) --> (mem (loc, form) set)
         | Diam (Test phi, psi) ->
-            mem (loc, phi) set && mem (loc, psi) set
+            (mem (loc, phi) set && mem (loc, psi) set) --> (mem (loc, form) set)
         | Diam (Choice (alpha, beta), phi) ->
-            mem (loc, Diam (alpha, Q phi)) set || mem (loc, Diam (beta, Q phi)) set
+            (mem (loc, Diam (alpha, Q phi)) set || mem (loc, Diam (beta, Q phi)) set)
+            --> (mem (loc, form) set)
         | Diam (Iter alpha, phi) ->
-            mem (loc, phi) set || mem (loc, Diam (alpha, Q (Diam (Iter alpha, phi)))) set
+            (mem (loc, phi) set || mem (loc, Diam (alpha, Q (Diam (Iter alpha, phi)))) set)
+            --> (mem (loc, form) set)
         | Q phi ->
-            mem (loc, phi) set
+            (mem (loc, phi) set) --> (mem (loc, form) set)
         | _ -> true
-       
+      )
+    in
+    if for_all check_possible set then
+      if (not (is_empty set)) && (for_all check_ok_forward set)
+                              && (for_all check_ok_backward flc)
+      then SetSet.Ok else SetSet.Possible
+    else SetSet.Wrong
 
 end
 
@@ -86,6 +100,10 @@ module SetHSet
 end
 
 type t = HSet.t * SetHSet.t
+
+let construct form =
+  let flc = HSet.neg_closure (HSet.fischer_ladner ([], HForm.translate form)) in
+  (flc, SetHSet.filtered_subsets (HSet.is_Hintikka flc) flc)
 
 let at_depth (_,ss) loc =
   SetHSet.filter (fun s -> HSet.depth s = loc) ss
