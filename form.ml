@@ -90,3 +90,61 @@ and print_progpar pp prog = match prog with
       pp_print_char pp ')'
   | _ ->
       print_program pp prog
+
+let rec size = function
+  | Test _ -> 0
+  | Atom _ -> 1
+  | Iter alpha ->
+      if (size alpha) = 0 then 0 else 2
+  | Seq (alpha, beta) ->
+      (match (size alpha, size beta) with
+        | (0,0) -> 0
+        | (1,_) -> 1
+        | (_,1) -> 1
+        | _     -> 2 )
+  | CPar (alpha, beta) ->
+      (match (size alpha, size beta) with
+        | (0,0) -> 0
+        | (1,_) -> 1
+        | (_,1) -> 1
+        | _     -> 2 )
+  | Choice (alpha, beta) ->
+      (match (size alpha, size beta) with
+        | (0,0) -> 0
+        | (1,1) -> 1
+        | _     -> 2 )
+
+(* Move it to More.List *)
+let fold_notnil fct default = function
+  | [] -> default
+  | h::t -> List.fold_left fct h t
+
+let product fct la lb =
+  List.fold_left  (fun acc1 v1 ->
+                    List.fold_left (fun acc2 v2 -> (fct v1 v2)::acc2) acc1 lb)
+                  [] la
+
+let rec unchoice_list_prog = function
+  | Atom _ as a -> [a]
+  | Test phi -> List.rev_map (fun psi -> Test psi) (unchoice_list_form phi)
+  | Choice (alpha,beta) ->
+      List.rev_append (unchoice_list_prog alpha) (unchoice_list_prog beta)
+  | Iter alpha ->
+      let filtered =
+        List.fold_left  (fun acc beta ->
+                          if (size beta) = 0 then acc else (Iter beta)::acc)
+                        [] (unchoice_list_prog alpha)
+      in
+      [Iter (fold_notnil (fun acc beta -> Seq (acc, beta)) (Test top) filtered)]
+  | Seq (alpha, beta) ->
+      product (fun a b -> Seq (a,b))  (unchoice_list_prog alpha)
+                                      (unchoice_list_prog beta)
+  | CPar (alpha, beta) ->
+      product (fun a b -> CPar (a,b)) (unchoice_list_prog alpha)
+                                      (unchoice_list_prog beta)
+and unchoice_list_form = function
+  | Box (alpha, phi) ->
+      List.rev_map (fun beta -> Box (beta, phi)) (unchoice_list_prog alpha)
+  | Neg phi -> List.rev_map (fun psi -> neg psi) (unchoice_list_form phi)
+  | phi -> [phi]
+and unchoice phi = fold_notnil disj Bot (unchoice_list_form phi)
