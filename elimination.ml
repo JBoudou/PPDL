@@ -19,7 +19,7 @@ module type HINTIKKA
     val exists : (elt -> bool) -> t -> bool
     val compare : t -> t -> int
 
-    val depth : t -> Loc.t
+    val depth : t -> Dir.t
 
   end with
     type elt = HForm.t
@@ -47,9 +47,9 @@ module type HINTIKKA
   end with
     type elt = HSet.t
 
-  val at_depth : t -> Loc.t -> SetHSet.t
+  val at_depth : t -> Dir.t -> SetHSet.t
   val fold_set : (HSet.t -> 'a -> 'a) -> t -> 'a -> 'a
-  val forms_with_loc : t -> Loc.t -> HSet.t
+  val forms_with_loc : t -> Dir.t -> HSet.t
 end
 
 module type S
@@ -81,22 +81,22 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
       let simple_mem form set =
         H.HSet.sat (H.HSet.depth set, form) set
       in
-      List.exists (fun t -> simple_mem (HForm.PH (Loc.L, t)) l && simple_mem (HForm.PH (Loc.R, t)) r)
+      List.exists (fun t -> simple_mem (HForm.PH (Dir.L, t)) l && simple_mem (HForm.PH (Dir.R, t)) r)
                   [1;2]
 
     let type_list (s,l,r) =
       let loc = H.HSet.depth s in
-      List.filter (fun t -> H.HSet.sat ((Loc.L::loc), HForm.PH (Loc.L, t)) l &&
-                            H.HSet.sat ((Loc.R::loc), HForm.PH (Loc.R, t)) r ) [1;2]
+      List.filter (fun t -> H.HSet.sat ((Dir.L::loc), HForm.PH (Dir.L, t)) l &&
+                            H.HSet.sat ((Dir.R::loc), HForm.PH (Dir.R, t)) r ) [1;2]
 
     let all h =
       let aux s acc =
         let loc = H.HSet.depth s in
         H.SetHSet.fold_product (fun acc l r -> if same_type l r then (s,l,r)::acc else acc)
-          acc (H.at_depth h (Loc.L::loc)) (H.at_depth h (Loc.R::loc))
+          acc (H.at_depth h (Dir.L::loc)) (H.at_depth h (Dir.R::loc))
       in H.fold_set aux h []
 
-    let depth (b,_,_) = let base = H.HSet.depth b in [(Loc.L::base); (Loc.R::base)]
+    let depth (b,_,_) = let base = H.HSet.depth b in [(Dir.L::base); (Dir.R::base)]
 
     let compare (s1,l1,r1) (s2,l2,r2) =
       chain_compare [ lazy (H.HSet.compare s1 s2);
@@ -112,8 +112,8 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
 
     type t =
       | Initial
-      | Zero of Loc.dir * Plug.t
-      | Nonzero of Loc.dir * Plug.t * Plug.t
+      | Zero of Dir.dir * Plug.t
+      | Nonzero of Dir.dir * Plug.t * Plug.t
 
     let compare = Pervasives.compare
 
@@ -123,8 +123,8 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
       let check s1 l1 r1 s2 t = function
         | (loc, HForm.Diam (HForm.CPar (alpha, beta), phi)) as lf ->
             (not (H.HSet.sat (loc, phi) s2 &&
-                  H.HSet.sat (Loc.L::loc, HForm.Diam (alpha, HForm.PH (Loc.L, t))) l1 &&
-                  H.HSet.sat (Loc.R::loc, HForm.Diam (beta,  HForm.PH (Loc.R, t))) r1 ))
+                  H.HSet.sat (Dir.L::loc, HForm.Diam (alpha, HForm.PH (Dir.L, t))) l1 &&
+                  H.HSet.sat (Dir.R::loc, HForm.Diam (beta,  HForm.PH (Dir.R, t))) r1 ))
             || H.HSet.sat lf s1
         | _ -> true
       in
@@ -137,12 +137,12 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
       let plugs = Plug.all h in
       let acc =
         List.fold_left
-          (fun acc elt -> fct (Zero (Loc.L,elt)) (fct (Zero (Loc.R,elt)) acc))
+          (fun acc elt -> fct (Zero (Dir.L,elt)) (fct (Zero (Dir.R,elt)) acc))
           acc plugs in
       let filt acc p1 p2 =
 
         if compatible_plugs h p1 p2
-        then fct (Nonzero (Loc.L, p1,p2)) (fct (Nonzero (Loc.R, p1,p2)) acc)
+        then fct (Nonzero (Dir.L, p1,p2)) (fct (Nonzero (Dir.R, p1,p2)) acc)
         else acc
       in
       List.fold_unordered_distinct_pair filt acc plugs 
@@ -154,8 +154,8 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
 
     let other_side = function
       | Initial -> Initial
-      | Zero (d, p) -> Zero (Loc.other_dir d, p)
-      | Nonzero (d, p1, p2) -> Nonzero (Loc.other_dir d, p1, p2)
+      | Zero (d, p) -> Zero (Dir.other_dir d, p)
+      | Nonzero (d, p1, p2) -> Nonzero (Dir.other_dir d, p1, p2)
 
   end
     
@@ -253,17 +253,17 @@ module Make (H : HINTIKKA) (* : S with type hintikka = H.t *)
 
   and reach_cpar alpha beta cur (h,m) thread =
     let check = function
-      | DirSocket.Zero (Loc.L, (s,l,r)) as st
+      | DirSocket.Zero (Dir.L, (s,l,r)) as st
         when ((s = cur) &&
               (H.SetHSet.mem l (reachable alpha l (h,m) (Model.find st m))) &&
               (H.SetHSet.mem r (reachable alpha r (h,m) (Model.find (DirSocket.other_side st) m))))
         -> Some s
-      | DirSocket.Nonzero (Loc.L, (s1,l1,r1), (s2,l2,r2)) as st
+      | DirSocket.Nonzero (Dir.L, (s1,l1,r1), (s2,l2,r2)) as st
         when ((s1 = cur) && (Thread.mem (s2, Hashtbl.create 0) thread) &&
               (H.SetHSet.mem l2 (reachable alpha l1 (h,m) (Model.find st m))) &&
               (H.SetHSet.mem r2 (reachable alpha r1 (h,m) (Model.find (DirSocket.other_side st) m))))
         -> Some s2
-      | DirSocket.Nonzero (Loc.L, (s2,l2,r2), (s1,l1,r1)) as st
+      | DirSocket.Nonzero (Dir.L, (s2,l2,r2), (s1,l1,r1)) as st
         when ((s1 = cur) && (Thread.mem (s2, Hashtbl.create 0) thread) &&
               (H.SetHSet.mem l2 (reachable alpha l1 (h,m) (Model.find st m))) &&
               (H.SetHSet.mem r2 (reachable alpha r1 (h,m) (Model.find (DirSocket.other_side st) m))))

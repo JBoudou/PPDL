@@ -22,3 +22,13 @@ module List
     | h::t -> fold_left (fun a v -> fct a v h) (fold_unordered_distinct_pair fct acc t) t
 
 end
+
+module OrderedInt = struct
+  type t = int
+  let compare = (-)
+end
+
+module IntSet = Set.Make (OrderedInt)
+module IntMap = Map.Make (OrderedInt)
+
+module StringSet = Set.Make (String)

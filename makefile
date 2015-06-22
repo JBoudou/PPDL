@@ -2,7 +2,7 @@ CAMLC=ocamlc
 CAMLDEP=ocamldep
 CAMLOPT=ocamlopt
 
-SRCS= more.ml form.ml loc.ml hForm.ml setSet.ml hintikka.ml elimination.ml test.ml
+SRCS= more.ml form.ml dir.ml hForm.ml setSet.ml hintikka.ml elimination.ml test.ml tForm.ml
 OBJS= ${SRCS:.ml=.cmo}
 
 all: .depend ${OBJS} test
