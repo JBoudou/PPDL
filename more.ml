@@ -32,3 +32,4 @@ module IntSet = Set.Make (OrderedInt)
 module IntMap = Map.Make (OrderedInt)
 
 module StringSet = Set.Make (String)
+module StringMap = Map.Make (String)

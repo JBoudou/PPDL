@@ -16,12 +16,26 @@ end
 module IntStringSet = Set.Make (IntString)
 module IntStringMap = Map.Make (IntString)
 
-module TripleInt = struct
-  type t = int * int * int
+module DoubleInt = struct
+  type t = int * int
   let compare = Pervasives.compare
 end
 
-module TripleIntSet = Set.Make (TripleInt)
+module DoubleIntSet = Set.Make (DoubleInt)
+
+module ForwardCPar = struct
+  type t = TForm.prog * int * TForm.prog * TForm.form
+  let compare = Pervasives.compare
+end
+
+module ForwardCParSet = Set.Make (ForwardCPar)
+
+module DoubleProg = struct 
+  type t = TForm.prog * TForm.prog
+  let compare = Pervasives.compare
+end
+
+module DoubleProgSet = Set.Make (DoubleProg)
 
 type tableau = {
   (* active judgments *)
@@ -33,13 +47,15 @@ type tableau = {
   var_pos : IntStringSet.t;
   var_neg : IntStringSet.t;
   (* universals *)
-  box_atom_form : TForm.form list IntStringMap.t;
-  box_atom_prog :        int list IntStringMap.t;
-  box_cpar_forw : (TForm.prog * int * TForm.prog * TForm.form) IntMap.t;
-  box_sep_forw : TripleIntSet.t;
-  box_sep_back : TripleIntSet.t;
-  box_cpar_left   : int IntMap.t;
-  box_cpar_right  : int IntMap.t;
+  box_atom_form : TForm.form list StringMap.t;
+  box_atom_succ :        int list StringMap.t;
+  box_cpar_forw : ForwardCParSet.t;
+  box_cpar_back :  DoubleProgSet.t;
+  box_sep_forw : (int * int) list;
+  box_sep_back : (int * int) list;
+  box_cpar_left   : IntSet.t IntMap.t;
+  box_cpar_right  : IntSet.t IntMap.t;
+  g_par_form : TForm.form IntMap.t;
   (* state *)
   current : int;
   fresh : int;
@@ -53,13 +69,15 @@ let init phi = {
   waiting   = [];
   var_pos = IntStringSet.empty;
   var_neg = IntStringSet.empty;
-  box_atom_form = IntStringMap.empty;
-  box_atom_prog = IntStringMap.empty;
-  box_cpar_forw = IntMap.empty;
-  box_sep_forw = TripleIntSet.empty;
-  box_sep_back = TripleIntSet.empty;
+  box_atom_form = StringMap.empty;
+  box_atom_succ = StringMap.empty;
+  box_cpar_forw = ForwardCParSet.empty;
+  box_cpar_back =  DoubleProgSet.empty;
+  box_sep_forw = [];
+  box_sep_back = [];
   box_cpar_left  = IntMap.empty;
   box_cpar_right = IntMap.empty;
+  g_par_form = IntMap.empty;
   current = 0;
   fresh = 1;
   terminated = IntSet.empty;
@@ -106,6 +124,12 @@ let rec proceed_todo tab =
     | (Edge (x,y, Seq (alpha, beta)))::t when (size beta) = Zero ->
         proceed_todo {tab with
           todo = (Edge (x,y, alpha))::(Edge (y,y, beta))::t}
+    (* diam ;11 *)
+    | (Edge (x,y, Seq (alpha, beta)))::t
+        when x = tab.current && size alpha = One && size beta = One ->
+        proceed_todo {tab with
+          todo = (Edge (x, tab.fresh, alpha))::(Edge (tab.fresh, y, beta))::t ;
+          fresh = tab.fresh + 1 }
     (* box star *)
     | (Node (x, (Neg (Diam (Iter alpha, phi)) as psi)))::t ->
         proceed_todo {tab with
@@ -125,10 +149,101 @@ let rec proceed_todo tab =
           todo = t;
           var_pos = IntStringSet.add (x,v) tab.var_pos}
 
-    (* TODO *)
-    (* move branching *)
+    (* Universals (for all) *)
+
+    | (Node (x, PH (Dir.L, i)))::t ->
+        let aux acc (l,r) =
+          if l = x &&
+            ( try IntSet.mem i (IntMap.find r tab.box_cpar_right)
+              with Not_found -> false )
+          then (Node (tab.current, IntMap.find i tab.g_par_form))::acc
+          else acc
+        in
+        proceed_todo {tab with
+          todo = List.fold_left aux t tab.box_sep_back;
+          box_cpar_left = IntMap.add x
+            (IntSet.add i ( try IntMap.find x tab.box_cpar_left
+                            with Not_found -> IntSet.empty))
+            tab.box_cpar_left }
+    | (Node (x, PH (Dir.R, i)))::t ->
+        let aux acc (l,r) =
+          if r = x &&
+            ( try IntSet.mem i (IntMap.find l tab.box_cpar_left)
+              with Not_found -> false )
+          then (Node (tab.current, IntMap.find i tab.g_par_form))::acc
+          else acc
+        in
+        proceed_todo {tab with
+          todo = List.fold_left aux t tab.box_sep_back;
+          box_cpar_right = IntMap.add x
+            (IntSet.add i ( try IntMap.find x tab.box_cpar_right
+                            with Not_found -> IntSet.empty))
+            tab.box_cpar_right }
+
+    (* move branching (for all) *)
+
+    (* diam star *)
+    | (Node (x, Diam (alpha, phi)) as n)::t when size alpha = More ->
+        proceed_todo {tab with
+          todo = t;
+          branching = n::tab.branching}
+    (* box ? *)
+    | (Node (x, Neg (Diam (Test phi, psi))) as n)::t ->
+        proceed_todo {tab with
+          todo = t;
+          branching = n::tab.branching}
+
     (* move waiting *)
-    (* Universals *)
+    | (Node (x, _) as n)::t when x != tab.current ->
+        proceed_todo {tab with
+          todo = t;
+          waiting = n::tab.waiting}
+    | (Edge (x, _,_) as n)::t when x != tab.current ->
+        proceed_todo {tab with
+          todo = t;
+          waiting = n::tab.waiting}
+    | (Sepa (x,_,_,_) as n)::t when x != tab.current ->
+        proceed_todo {tab with
+          todo = t;
+          waiting = n::tab.waiting}
+
+    (* Universals (for current) *)
+
+    (* Box *)
+    | (Node (x, Neg (Diam (Atom a, phi))))::t ->
+        let neg_phi = neg phi in
+        proceed_todo {tab with
+          todo = List.fold_left
+                  (fun acc y -> (Node (y, neg_phi))::acc)
+                  t ( try StringMap.find a tab.box_atom_succ
+                      with Not_found -> [] ) ;
+          box_atom_form = StringMap.add a
+                  (neg_phi::( try StringMap.find a tab.box_atom_form
+                          with Not_found -> []))
+                  tab.box_atom_form }
+    | (Edge (x,y, Atom a))::t ->
+        proceed_todo {tab with
+          todo = List.fold_left
+                  (fun acc phi -> (Node (y, phi))::acc)
+                  t ( try StringMap.find a tab.box_atom_form
+                      with Not_found -> [] ) ;
+          box_atom_succ = StringMap.add a
+                  (y::( try StringMap.find a tab.box_atom_succ
+                        with Not_found -> []))
+                  tab.box_atom_succ }
+
+
+    (* move branching (for current) *)
+
+    | (Edge (x,y, Seq (alpha, beta)) as n)::t ->
+        proceed_todo {tab with
+          todo = t;
+          branching = n::tab.branching}
+    | (Edge (x,y, Iter alpha) as n)::t when x != y ->
+        proceed_todo {tab with
+          todo = t;
+          branching = n::tab.branching}
+
     (* move successor *)
 
     | _ -> failwith "todo"

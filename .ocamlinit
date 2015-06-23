@@ -1,7 +1,3 @@
 #load "more.cmo";;
 #load "form.cmo";;
-#load "loc.cmo";;
-#load "hForm.cmo";;
-#load "setSet.cmo";;
-#load "hintikka.cmo";;
-#load "elimination.cmo";;
+#load "tForm.cmo";;
