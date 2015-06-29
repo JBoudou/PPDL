@@ -21,6 +21,12 @@ module List
     | [] -> acc
     | h::t -> fold_left (fun a v -> fct a v h) (fold_unordered_distinct_pair fct acc t) t
 
+  let all_choices chlst =
+    let aux acc (a,b) =
+      List.fold_left (fun acc lst -> (a::lst)::(b::lst)::acc) [] acc
+    in
+    List.fold_left aux [[]] chlst
+
 end
 
 module OrderedInt = struct
