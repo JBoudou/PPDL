@@ -79,15 +79,32 @@ let init phi = {
 exception Nothing_Todo
 exception No_rule of judgment
 
-(*
-let proceed rl_list tab =
-  let rec aux tab = function
-    | [] -> tab
-    | h::t ->
-        try aux (h tab) rl_list
-        with Nothing_Todo -> aux t
-  in aux
-  *)
+let select tab ncur =
+  let partition = function
+    | Node (x, _)     -> x = ncur
+    | Edge (x,_,_)    -> x = ncur
+    | Sepa (x,_,_,_)  -> x = ncur
+  in
+  let (ntodo, nwaiting) = List.partition partition tab.waiting
+  in
+  { tab with
+      todo = ntodo;
+      branching = [];
+      successor = [];
+      waiting = nwaiting;
+      box_atom_form = StringMap.empty;
+      box_atom_succ = StringMap.empty;
+      box_cpar_forw = [];
+      box_cpar_back =  DoubleProgSet.empty;
+      box_sep_forw = [];
+      box_sep_back = [];
+      box_cpar_left  = IntMap.empty;
+      box_cpar_right = IntMap.empty;
+      current = ncur;
+      terminated = IntSet.add tab.current tab.terminated
+  }
+
+
 
 (* TODO: factor size computation *)
 let rec proceed_todo tab =
@@ -99,7 +116,7 @@ let rec proceed_todo tab =
     | (Edge (x,y, Iter _))::t when x = y ->
         proceed_todo {tab with todo = t}
 
-    (* apply conjunctive non-successor rules *)
+    (* conjunctive non-successor rules for all *)
 
     (* diam 0 *)
     | (Node (x, Diam (alpha, phi)))::t when (size alpha) = Zero ->
@@ -124,12 +141,6 @@ let rec proceed_todo tab =
     | (Edge (x,y, Seq (alpha, beta)))::t when (size beta) = Zero ->
         proceed_todo {tab with
           todo = (Edge (x,y, alpha))::(Edge (y,y, beta))::t}
-    (* diam ;11 *)
-    | (Edge (x,y, Seq (alpha, beta)))::t
-        when x = tab.current && size alpha = One && size beta = One ->
-        proceed_todo {tab with
-          todo = (Edge (x, tab.fresh, alpha))::(Edge (tab.fresh, y, beta))::t ;
-          fresh = tab.fresh + 1 }
     (* box star *)
     | (Node (x, (Neg (Diam (Iter alpha, phi)) as psi)))::t ->
         proceed_todo {tab with
@@ -207,6 +218,55 @@ let rec proceed_todo tab =
         proceed_todo {tab with
           todo = t;
           waiting = n::tab.waiting}
+
+    (* conjunctive non-successor rules for current *)
+
+    (* diam ;11 *)
+    | (Edge (x,y, Seq (alpha, beta)))::t
+        when size alpha = One && size beta = One ->
+        proceed_todo {tab with
+          todo = (Edge (x, tab.fresh, alpha))::(Edge (tab.fresh, y, beta))::t ;
+          fresh = tab.fresh + 1 }
+    (* diam || 00 *)
+    | (Edge (x,y, CPar (alpha, i, beta)))::t
+        when x = y ->
+        proceed_todo {tab with
+          todo =
+            (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+            (Edge (tab.fresh,     tab.fresh,    alpha))::
+            (Edge (tab.fresh + 1, tab.fresh + 1, beta))::t;
+          fresh = tab.fresh + 2}
+    (* diam || 0. *)
+    | (Edge (x,y, CPar (alpha, i, beta)))::t
+        when size alpha = Zero ->
+        proceed_todo {tab with
+          todo =
+            (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+            (Edge (tab.fresh,     tab.fresh,    alpha))::
+            (Edge (tab.fresh + 1, tab.fresh + 2, beta))::
+            (Sepa (y, tab.fresh, tab.fresh + 2, Back))::t;
+          fresh = tab.fresh + 3}
+    (* diam || 0. *)
+    | (Edge (x,y, CPar (alpha, i, beta)))::t
+        when size beta = Zero ->
+        proceed_todo {tab with
+          todo =
+            (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+            (Edge (tab.fresh,     tab.fresh + 2, alpha))::
+            (Edge (tab.fresh + 1, tab.fresh + 1,  beta))::
+            (Sepa (y, tab.fresh + 2, tab.fresh + 1, Back))::t;
+          fresh = tab.fresh + 3}
+    (* diam || 11 *)
+    | (Edge (x,y, CPar (alpha, i, beta)))::t
+        when size alpha = One && size beta = One ->
+        proceed_todo {tab with
+          todo =
+            (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+            (Edge (tab.fresh,     tab.fresh + 2, alpha))::
+            (Edge (tab.fresh + 1, tab.fresh + 3,  beta))::
+            (Sepa (y, tab.fresh + 2, tab.fresh + 3, Back))::t;
+          fresh = tab.fresh + 4}
+
 
     (* Universals (for current) *)
 
@@ -417,9 +477,25 @@ and proceed_successor tab =
     | j::_ -> raise (No_rule j)
 
 and proceed_waiting tab =
+  let rec make_candidate acc n =
+    if n < 0 then acc else
+    if IntSet.mem n tab.terminated
+    then make_candidate               acc   (n - 1)
+    else make_candidate (IntSet.add n acc)  (n - 1)
+  in
+  let eliminate acc = function
+    | (Edge (x,y,_)) ->
+        if IntSet.mem x tab.terminated
+        then acc else IntSet.remove y acc
+    | (Sepa (x,y,z, Back)) ->
+        if (IntSet.mem y tab.terminated) && (IntSet.mem z tab.terminated)
+        then acc else IntSet.remove x acc
+    | _ -> acc
+  in
   match tab.waiting with
     | [] -> true
 
-    (* TODO *)
-
-    | j::_ -> raise (No_rule j)
+    | lst ->
+        let candidate = make_candidate IntSet.empty (tab.fresh - 1) in
+        let selection = List.fold_left eliminate candidate tab.waiting in
+        proceed_todo (select tab (IntSet.choose selection))
