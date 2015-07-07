@@ -54,9 +54,13 @@ let translate f =
     | Form.Choice (alpha, beta) -> failwith "TForm.translate"
   in snd (trans_form 0 (Form.unchoice f))
 
-module Prog
-= struct
+module Prog = struct
   type t = prog
+  let compare = Pervasives.compare
+end
+
+module Form = struct
+  type t = form
   let compare = Pervasives.compare
 end
 

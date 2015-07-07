@@ -12,6 +12,7 @@ let test phi =
 
 let a = Atom "a"
 let b = Atom "b"
+let c = Atom "c"
 let p = Var "p"
 let q = Var "q"
 
@@ -25,27 +26,34 @@ let t6 = conj
   (Diam (Seq (Seq (Seq (Seq (Iter a, Iter b), a), Iter b), b), p))
 let t7 = conj
   (neg (Diam (CPar (a, 1, b), p)))
-  (Diam (CPar (a, 1, b), q))
+  (Diam (CPar (a, 2, b), q))
 let t8 = conj
   (neg (Diam (CPar (Iter a, 1, Iter b), p)))
-  (Diam (CPar (a, 1, b), q))
+  (Diam (CPar (a, 2, b), q))
+
+(* <(a ||1 (b ; [c]¬p?)) ||2 c> [[[c]¬p? ||3 T?]⊥? || T?] ⊥ *)
+let t9 =
+  Diam (CPar (CPar (a, 1, Seq (b, Test (Neg (Diam (c, p))))), 2, c), 
+    Neg (Diam (CPar (
+      Test (Neg (Diam (CPar (Test (Neg (Diam (c, p))), 3, Test top), top))),
+      4, Test top), top)))
+
+let t10 = Neg (Diam (Iter a, Neg (Diam (a, top))))
+
 (* TODO: continue *)
 
-let () =
-  print_endline "t1" ;
-  test t1;
-  print_endline "t2" ;
-  test t2;
-  print_endline "t3" ;
-  test t3;
-  print_endline "t4" ;
-  test t4;
-  print_endline "t5" ;
-  test t5;
-  print_endline "t6" ;
-  test t6;
-  print_endline "t7" ;
-  test t7;
-  print_endline "t8" ;
-  test t8;
-  ()
+let results =
+  List.map (fun (name, form) ->
+              print_endline name ;
+              proceed_todo (init form))
+           [  "t1",   t1 ;
+              "t2",   t2 ;
+              "t3",   t3 ;
+              "t4",   t4 ;
+              "t5",   t5 ;
+              "t6",   t6 ;
+              "t7",   t7 ;
+              "t8",   t8 ;
+              "t9",   t9 ;
+              "t10",  t10 ;
+           ]

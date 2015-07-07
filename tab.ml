@@ -30,6 +30,14 @@ end
 
 module DoubleProgSet = Set.Make (DoubleProg)
 
+module FormSet = Set.Make (TForm.Form)
+module FormSetSet = Set.Make (FormSet)
+
+module IntProgMap = Map.Make (struct
+  type t = int * TForm.prog
+  let compare = Pervasives.compare
+end)
+
 type tableau = {
   (* active judgments *)
   todo      : judgment list;
@@ -43,7 +51,7 @@ type tableau = {
   box_atom_form : TForm.form list StringMap.t;
   box_atom_succ :        int list StringMap.t;
   box_cpar_forw : (TForm.prog * int * TForm.prog) list;
-  box_cpar_back :  DoubleProgSet.t;
+  box_cpar_back :       (TForm.prog * TForm.prog) list;
   box_sep_forw : (int * int) list;
   box_sep_back : (int * int) list;
   box_cpar_left   : IntSet.t IntMap.t;
@@ -52,7 +60,12 @@ type tableau = {
   (* state *)
   current : int;
   fresh : int;
+  suspended: int IntMap.t;
   terminated : IntSet.t;
+  (* loop check *)
+  checked : bool;
+  check_main : FormSetSet.t;
+  check_iter : FormSetSet.t IntProgMap.t;
 }
 
 let init phi = {
@@ -65,7 +78,7 @@ let init phi = {
   box_atom_form = StringMap.empty;
   box_atom_succ = StringMap.empty;
   box_cpar_forw = [];
-  box_cpar_back =  DoubleProgSet.empty;
+  box_cpar_back = [];
   box_sep_forw = [];
   box_sep_back = [];
   box_cpar_left  = IntMap.empty;
@@ -73,7 +86,11 @@ let init phi = {
   g_par_form = IntMap.empty;
   current = 0;
   fresh = 1;
+  suspended  = IntMap.empty;
   terminated = IntSet.empty;
+  checked = false;
+  check_main = FormSetSet.empty;
+  check_iter = IntProgMap.empty;
 }
 
 exception Nothing_Todo
@@ -95,15 +112,62 @@ let select tab ncur =
       box_atom_form = StringMap.empty;
       box_atom_succ = StringMap.empty;
       box_cpar_forw = [];
-      box_cpar_back =  DoubleProgSet.empty;
+      box_cpar_back = [];
       box_sep_forw = [];
       box_sep_back = [];
       box_cpar_left  = IntMap.empty;
       box_cpar_right = IntMap.empty;
       current = ncur;
-      terminated = IntSet.add tab.current tab.terminated
+      suspended = IntMap.remove ncur tab.suspended;
+      checked = false;
   }
 
+let make_formset tab =
+  let add_form_list acc = function
+    | Node (x, phi) when x = tab.current -> FormSet.add phi acc
+    | _ -> acc
+  in
+  List.fold_left (fun acc f -> f acc) (FormSet.empty)
+  [
+    (fun acc -> List.fold_left add_form_list acc tab.todo );
+    (fun acc -> List.fold_left add_form_list acc tab.branching );
+    (fun acc -> List.fold_left add_form_list acc tab.successor );
+    IntStringSet.fold
+      (fun elt acc -> match elt with
+        | (n, s) when n = tab.current -> FormSet.add (Var s) acc
+        | _ -> acc)
+      tab.var_pos ;
+    IntStringSet.fold
+      (fun elt acc -> match elt with
+        | (n, s) when n = tab.current -> FormSet.add (Neg (Var s)) acc
+        | _ -> acc)
+      tab.var_neg ;
+    StringMap.fold
+      (fun alpha lst acc ->
+        List.fold_left
+          (fun acc phi -> FormSet.add (Neg (Diam (Atom alpha, neg phi))) acc)
+          acc lst)
+      tab.box_atom_form ;
+    (fun acc ->
+      List.fold_left
+        (fun acc (alpha, i, beta) ->
+          FormSet.add
+            (Neg (Diam (CPar (alpha, i, beta),
+                        neg (IntMap.find i tab.g_par_form))))
+            acc)
+        acc tab.box_cpar_forw );
+    (fun acc ->
+      List.fold_left
+        (fun acc (alpha, beta) ->
+          FormSet.add
+            (Neg (Diam (CPar (alpha, 0, beta), top)))
+            acc)
+        acc tab.box_cpar_back );
+  ]
+
+
+(* TODO: remove this debuging exception *)
+exception Argh of int list
 
 
 (* TODO: factor size computation *)
@@ -114,6 +178,8 @@ let rec proceed_todo tab =
     (* remove garbage *)
 
     | (Edge (x,y, Iter _))::t when x = y ->
+        proceed_todo {tab with todo = t}
+    | (Node (_, Neg Bot))::t ->
         proceed_todo {tab with todo = t}
 
     (* conjunctive non-successor rules for all *)
@@ -144,7 +210,7 @@ let rec proceed_todo tab =
     (* box star *)
     | (Node (x, (Neg (Diam (Iter alpha, phi)) as psi)))::t ->
         proceed_todo {tab with
-          todo = (Node (x, phi))::(Node (x, Neg (Diam (alpha, psi))))::t}
+          todo = (Node (x, neg phi))::(Node (x, Neg (Diam (alpha, neg psi))))::t}
 
     (* check inconsistency *)
 
@@ -339,8 +405,8 @@ let rec proceed_todo tab =
 
 and proceed_boxpar1F x alpha i beta phi tab =
   let aux acc (y,z) =
-    (Node (y, Neg (Diam (alpha, neg (PH (Dir.L, i))))))::
-    (Node (y, Neg (Diam (beta,  neg (PH (Dir.R, i))))))::acc
+    (Node (y, Neg (Diam (alpha, Neg (PH (Dir.L, i))))))::
+    (Node (y, Neg (Diam (beta,  Neg (PH (Dir.R, i))))))::acc
   in proceed_todo {tab with
     todo = List.fold_left aux tab.todo tab.box_sep_forw;
     box_cpar_forw = (alpha, i, beta)::tab.box_cpar_forw;
@@ -352,7 +418,7 @@ and branch lst =
 
 and proceed_branching tab =
   match tab.branching with
-    | [] -> proceed_successor tab
+    | [] -> proceed_check tab
 
     (* diam star *)
     | (Node (x, Diam (alpha, phi)) as j)::t ->
@@ -418,6 +484,34 @@ and proceed_branching tab =
               (Edge (x, tab.fresh, alpha))::(Edge (tab.fresh, y, beta))::tab.todo;
             fresh = tab.fresh + 1} ]
 
+    (* box || 1F (cpar forw) *)
+    | (Sepa (x,y,z, Forw))::t ->
+        proceed_boxpar0bot {tab with
+          branching = t ;
+          todo =
+            List.fold_left
+              (fun acc (alpha, i, beta) ->
+                (Node (y, Neg (Diam (alpha, Neg (PH (Dir.L, i))))))::
+                (Node (z, Neg (Diam (beta,  Neg (PH (Dir.R, i))))))::acc )
+              tab.todo tab.box_cpar_forw ;
+          box_sep_forw = (y,z)::tab.box_sep_forw ;
+        } y z
+
+    (* box || 1B (cpar back) *)
+    | (Sepa (x,y,z, Back))::t ->
+        let find_or_empty elt map = try IntMap.find elt map
+                                    with Not_found -> IntSet.empty
+        in
+        proceed_boxpar0bot {tab with
+          branching = t;
+          todo =
+            IntSet.fold
+              (fun i acc -> (Node (x, IntMap.find i tab.g_par_form))::acc)
+              (IntSet.inter (find_or_empty y tab.box_cpar_left)
+                            (find_or_empty z tab.box_cpar_right))
+              tab.todo;
+          box_sep_forw = (y,z)::tab.box_sep_forw ;
+        } y z
     
     (* box || 0 bot *)
     | (Node (x, Neg (Diam (CPar (alpha, i, beta) as gamma, Neg Bot))))::t
@@ -430,8 +524,13 @@ and proceed_branching tab =
           )
         in
         branch (List.map
-                  (fun l -> {tab with todo = List.rev_append l tab.todo}) 
+                  (fun l -> {tab with
+                    branching = t ;
+                    todo = List.rev_append l tab.todo ;
+                    box_cpar_back = (alpha,beta)::tab.box_cpar_back ;
+                  })
                   add_todo)
+    
 
     (* box || O top *)
     | (Node (x, Neg (Diam (CPar (alpha, i, beta) as gamma, phi))))::t ->
@@ -444,14 +543,67 @@ and proceed_branching tab =
             branching = t;
             todo = (Node (x, Neg (Diam (desiter gamma, top))))::tab.todo} ]
 
-
     | j::_ -> raise (No_rule j)
+
+and proceed_boxpar0bot tab y z =
+  let todo_add = List.all_choices
+    (List.map (fun (alpha, beta) -> Node (y, Neg (Diam (alpha, top))),
+                                    Node (z, Neg (Diam (beta,  top))) )
+              tab.box_cpar_back )
+  in
+  branch
+    (List.map (fun to_add -> {tab with todo = List.rev_append tab.todo to_add})
+              todo_add)
+
+and proceed_check tab =
+  if tab.checked then proceed_successor tab else
+  let rec find_blocking = function
+    | [] -> None
+    | (Sepa (x,y,z,_))::_ when  (not (IntSet.mem x tab.terminated)) &&
+                                ((y = tab.current) || (z = tab.current)) ->
+          Some x
+    | _::t -> find_blocking t
+  in
+  match find_blocking tab.waiting with
+    | Some blocking ->
+       proceed_waiting {tab with
+          todo = [];
+          branching = [];
+          successor = [];
+          waiting = List.fold_left List.rev_append
+                    tab.waiting [tab.todo; tab.branching; tab.successor];
+          suspended = IntMap.add tab.current blocking tab.suspended}
+    | None -> (
+  let check_set = make_formset tab in
+  let rec find_iter_succ = function
+    | [] ->
+        if FormSetSet.mem check_set tab.check_main
+        then proceed_waiting {tab with
+          terminated = IntSet.add tab.current tab.terminated}
+        else proceed_successor {tab with
+          checked = true;
+          check_main = FormSetSet.add check_set tab.check_main;
+        }
+    | (Edge (x, y, Iter alpha))::t ->
+        let checksetset =
+          try IntProgMap.find (y,alpha) tab.check_iter
+          with Not_found -> FormSetSet.empty
+        in
+        if FormSetSet.mem check_set checksetset then false
+        else proceed_successor {tab with
+          checked = true;
+          check_iter = IntProgMap.add (y,alpha)
+                                      (FormSetSet.add check_set checksetset) 
+                                      tab.check_iter
+        }
+    | _::t -> find_iter_succ t
+  in find_iter_succ tab.successor
+  )
 
 and proceed_successor tab =
   match tab.successor with
-    | [] -> proceed_waiting tab
-
-    (* TODO: check for termination condition in both cases *)
+    | [] -> proceed_waiting {tab with
+              terminated = IntSet.add tab.current tab.terminated}
 
     (* diam 1 (or star) *)
     | (Node (x, Diam (alpha, phi)))::t ->
@@ -467,7 +619,9 @@ and proceed_successor tab =
         branch [
           {tab with
             successor = t;
-            todo = (Edge (x,y, alpha))::tab.todo};
+            todo = (Edge (x,y, alpha))::tab.todo;
+            check_iter = IntProgMap.remove (y, alpha) tab.check_iter;
+          };
           {tab with
             successor = t;
             todo =  (Edge (x, tab.fresh, alpha))::
@@ -479,16 +633,18 @@ and proceed_successor tab =
 and proceed_waiting tab =
   let rec make_candidate acc n =
     if n < 0 then acc else
-    if IntSet.mem n tab.terminated
+    if (IntSet.mem n tab.terminated) ||
+       ((IntMap.mem n tab.suspended) &&
+        not (IntSet.mem (IntMap.find n tab.suspended) tab.terminated))
     then make_candidate               acc   (n - 1)
     else make_candidate (IntSet.add n acc)  (n - 1)
   in
   let eliminate acc = function
-    | (Edge (x,y,_)) ->
+    | (Edge (x,y,_)) when x != y ->
         if IntSet.mem x tab.terminated
         then acc else IntSet.remove y acc
     | (Sepa (x,y,z, Back)) ->
-        if (IntSet.mem y tab.terminated) && (IntSet.mem z tab.terminated)
+        if (IntMap.mem y tab.suspended) && (IntMap.mem z tab.suspended)
         then acc else IntSet.remove x acc
     | _ -> acc
   in
@@ -498,4 +654,6 @@ and proceed_waiting tab =
     | lst ->
         let candidate = make_candidate IntSet.empty (tab.fresh - 1) in
         let selection = List.fold_left eliminate candidate tab.waiting in
+        try
         proceed_todo (select tab (IntSet.choose selection))
+        with Not_found -> raise (Argh (IntSet.elements tab.terminated))
