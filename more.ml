@@ -29,6 +29,31 @@ module List
 
 end
 
+module Format = struct
+  include Format
+
+  let pp_print_list print_elt fmt lst =
+    let rec aux = function
+      | [] -> ()
+      | h::[] ->
+        ( print_elt fmt h
+        )
+      | h::t ->
+        ( print_elt fmt h ;
+          pp_print_string fmt ";" ;
+          pp_print_break fmt 1 1 ;
+          aux t
+        )
+    in 
+    pp_open_box fmt 0 ;
+    pp_print_string fmt "[" ;
+    aux lst ;
+    pp_print_string fmt "]" ;
+    pp_close_box fmt ()
+
+end
+
+
 module OrderedInt = struct
   type t = int
   let compare = (-)

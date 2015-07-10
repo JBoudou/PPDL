@@ -8,6 +8,11 @@ type judgment =
   | Edge of int * int * TForm.prog
   | Sepa of int * int * int * separation
 
+module JudgmentSet = Set.Make (struct
+  type t = judgment
+  let compare = Pervasives.compare
+end)
+
 module IntString = struct
   type t = int * string
   let compare = Pervasives.compare
@@ -60,6 +65,7 @@ type tableau = {
   (* state *)
   current : int;
   fresh : int;
+  proceeded : JudgmentSet.t;
   suspended: int IntMap.t;
   terminated : IntSet.t;
   (* loop check *)
@@ -86,6 +92,7 @@ let init phi = {
   g_par_form = IntMap.empty;
   current = 0;
   fresh = 1;
+  proceeded  = JudgmentSet.empty;
   suspended  = IntMap.empty;
   terminated = IntSet.empty;
   checked = false;
@@ -118,6 +125,7 @@ let select tab ncur =
       box_cpar_left  = IntMap.empty;
       box_cpar_right = IntMap.empty;
       current = ncur;
+      proceeded  = JudgmentSet.empty;
       suspended = IntMap.remove ncur tab.suspended;
       checked = false;
   }
@@ -181,6 +189,16 @@ let rec proceed_todo tab =
         proceed_todo {tab with todo = t}
     | (Node (_, Neg Bot))::t ->
         proceed_todo {tab with todo = t}
+
+    | j::t ->
+        if JudgmentSet.mem j tab.proceeded
+        then proceed_todo {tab with todo = t}
+        else proceed_first {tab with
+                              proceeded = JudgmentSet.add j tab.proceeded}
+
+and proceed_first tab =
+  match tab.todo with
+    | [] -> failwith "proceed_first"
 
     (* conjunctive non-successor rules for all *)
 
@@ -510,7 +528,7 @@ and proceed_branching tab =
               (IntSet.inter (find_or_empty y tab.box_cpar_left)
                             (find_or_empty z tab.box_cpar_right))
               tab.todo;
-          box_sep_forw = (y,z)::tab.box_sep_forw ;
+          box_sep_back = (y,z)::tab.box_sep_back ;
         } y z
     
     (* box || 0 bot *)
@@ -571,7 +589,34 @@ and proceed_check tab =
           branching = [];
           successor = [];
           waiting = List.fold_left List.rev_append
-                    tab.waiting [tab.todo; tab.branching; tab.successor];
+                    tab.waiting 
+                    [ tab.todo;
+                      tab.branching;
+                      tab.successor;
+                      StringMap.fold
+                        (fun prog lst acc ->
+                          List.fold_left
+                            (fun acc phi ->
+                              (Node (tab.current,
+                                    Neg (Diam (Atom prog, neg phi))))::acc)
+                            acc lst
+                        )
+                        tab.box_atom_form [];
+                      List.map
+                        (fun (alpha, i, beta) ->
+                          Node (tab.current,
+                                Neg (Diam (CPar (alpha, i, beta),
+                                          neg (IntMap.find i tab.g_par_form)))))
+                        tab.box_cpar_forw;
+                      List.map
+                        (fun (alpha, beta) ->
+                          Node (tab.current,
+                                Neg (Diam (CPar (alpha, 0, beta), top))))
+                        tab.box_cpar_back;
+                      List.map
+                        (fun (x,y) -> Sepa (tab.current, x, y, Back))
+                        tab.box_sep_back;
+                    ];
           suspended = IntMap.add tab.current blocking tab.suspended}
     | None -> (
   let check_set = make_formset tab in
