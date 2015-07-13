@@ -42,12 +42,13 @@ let t12 =
   let d = disj p q in
   let e = Seq (a, Test d) in
   let skip = Test top in
-  diam (CPar
+  let plus alpha = Seq (alpha, Iter alpha) in
+  diam (plus (CPar
           (CPar
               (CPar (Seq (b, Seq (Test (Box (b, Bot)), Test d)), e),
               e),
           e)
-       )
+       ))
        (Box (CPar (CPar (CPar (Test (Box (b, Bot)), skip), skip), skip), Bot))
 
 (* TODO: continue *)
