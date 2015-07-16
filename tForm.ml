@@ -59,7 +59,7 @@ module Prog = struct
   let compare = Pervasives.compare
 end
 
-module Form = struct
+module Formula = struct
   type t = form
   let compare = Pervasives.compare
 end

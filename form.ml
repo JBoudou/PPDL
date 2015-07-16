@@ -144,7 +144,8 @@ let rec unchoice_list_prog = function
                                       (unchoice_list_prog beta)
 and unchoice_list_form = function
   | Box (alpha, phi) ->
-      List.rev_map (fun beta -> Box (beta, phi)) (unchoice_list_prog alpha)
+      let nphi = unchoice phi in
+      List.rev_map (fun beta -> Box (beta, nphi)) (unchoice_list_prog alpha)
   | Neg phi -> List.rev_map (fun psi -> neg psi) (unchoice_list_form phi)
   | phi -> [phi]
 and unchoice phi = fold_notnil disj Bot (unchoice_list_form phi)

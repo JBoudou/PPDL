@@ -21,13 +21,31 @@ clean:
 
 .PHONY: all clean
 
-.SUFFIXES: .ml .mli .cmo .cmi .cmx
+.SUFFIXES: .ml .mli .cmo .cmi .cmx .mll .mly
 
 .ml.cmo:
 	$(CAMLC) -c $(COMPFLAGS) $<
 
 .ml.cmx:
 	$(CAMLOPT) -c $(COMPFLAGS) $<
+
+.mli.cmi:
+	$(CAMLOPT) -c $(COMPFLAGS) $<
+
+.mll.ml:
+	ocamllex $<
+
+.mly.ml:
+	ocamlyacc -v $<
+
+test_parse: more.cmx form.cmx lexer.cmx parser.cmx tForm.cmx tab.cmx test_parse.cmx
+	$(CAMLOPT) -o $@ $^
+
+lexer.cmo: lexer.ml parser.cmi
+
+lexer.cmx: lexer.ml parser.cmi
+
+parser.mli: parser.ml
 
 test: ${SRCS:.ml=.cmx}
 	$(CAMLOPT) -o test $^

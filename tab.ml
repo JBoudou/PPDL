@@ -35,7 +35,7 @@ end
 
 module DoubleProgSet = Set.Make (DoubleProg)
 
-module FormSet = Set.Make (TForm.Form)
+module FormSet = Set.Make (TForm.Formula)
 module FormSetSet = Set.Make (FormSet)
 
 module IntProgMap = Map.Make (struct
@@ -212,7 +212,7 @@ and proceed_first tab =
     (* box ; *)
     | (Node (x, Neg (Diam (Seq (alpha, beta), phi))))::t ->
         proceed_todo {tab with
-          todo = (Node (x, Neg (Diam (alpha, Neg (Diam (beta, phi))))))::t}
+          todo = (Node (x, Neg (Diam (alpha, Diam (beta, phi)))))::t}
     (* diam ;00 *)
     | (Edge (x,y, Seq (alpha, beta)))::t when x = y ->
         proceed_todo {tab with
@@ -702,3 +702,6 @@ and proceed_waiting tab =
         try
         proceed_todo (select tab (IntSet.choose selection))
         with Not_found -> raise (Argh (IntSet.elements tab.terminated))
+
+let resolve phi =
+  proceed_todo (init (TForm.translate (Form.unchoice phi)))

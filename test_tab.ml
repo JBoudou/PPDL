@@ -51,18 +51,20 @@ let t12 =
        ))
        (Box (CPar (CPar (CPar (Test (Box (b, Bot)), skip), skip), skip), Bot))
 
+let t13 = conj
+  (Box (Iter (Seq (Iter b, Iter a)), Neg q))
+  (diam (Iter (Seq (Iter a, Iter b))) q)
+
 (* TODO: continue *)
 
 let print_formula = Form.print_formula
 open TForm
 open Tab
 
-(*
 #trace proceed_todo
 #trace proceed_branching
 #trace proceed_successor
 #trace proceed_waiting
-*)
 
 let results =
   List.map (fun phi ->
@@ -70,7 +72,7 @@ let results =
               Format.pp_print_newline Format.std_formatter () ;
               proceed_todo (init (translate phi))) 
            [  t1 ;
-              t2 ;
+(*              t2 ;
               t3 ;
               t4 ;
               t5 ;
@@ -81,6 +83,7 @@ let results =
               t10 ;
               t11 ;
               t12 ;
+*)              t13 ;
            ]
 
 let () =
