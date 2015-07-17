@@ -131,11 +131,19 @@ let rec unchoice_list_prog = function
       List.rev_append (unchoice_list_prog alpha) (unchoice_list_prog beta)
   | Iter alpha ->
       let filtered =
-        List.fold_left  (fun acc beta ->
-                          if (size beta) = 0 then acc else (Iter beta)::acc)
+        List.fold_left  (fun acc -> function
+                          | beta when size beta = 0 -> acc
+                          | Iter beta -> beta::acc
+                          | beta -> (Iter beta)::acc)
                         [] (unchoice_list_prog alpha)
-      in
-      [Iter (fold_notnil (fun acc beta -> Seq (acc, beta)) (Test top) filtered)]
+      in (
+      match filtered with
+        | [] -> [Test top]
+        | beta::[] -> [beta]
+        | beta::lst ->
+            [Iter (List.fold_left (fun acc beta -> Seq (acc, beta))
+                                  beta lst)]
+      )
   | Seq (alpha, beta) ->
       product (fun a b -> Seq (a,b))  (unchoice_list_prog alpha)
                                       (unchoice_list_prog beta)

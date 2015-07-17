@@ -1,45 +1,39 @@
-CAMLC=ocamlc
-CAMLDEP=ocamldep
-CAMLOPT=ocamlopt
+OCAMLC=ocamlc
+OCAMLOPT=ocamlopt
+OCAMLDEP=ocamldep
+OCAMLLEX=ocamllex
+OCAMLYACC=ocamlyacc
 
-SRCS= more.ml form.ml dir.ml hForm.ml setSet.ml hintikka.ml elimination.ml test.ml tForm.ml tab.ml
-OBJS= ${SRCS:.ml=.cmo}
-
-all: .depend ${OBJS} test
-
-.depend: $(SRCS)
-	$(CAMLDEP) $^ test.ml > .depend
-
-include .depend
-
-#doc:
-#	cd doc && $(MAKE)
-
-clean:
-	-rm -v ${OBJS} {SRCS:.ml=.cmi} test
-#	cd doc && $(MAKE) clean
-
-.PHONY: all clean
+.PHONY: all objs clean
 
 .SUFFIXES: .ml .mli .cmo .cmi .cmx .mll .mly
 
+all: .depend ppdltab
+
+objs: more.cmo form.cmo tForm.cmo tab.cmo
+
+clean:
+	-rm -v *.cmo *.cmx *.cmi *.o ppdltab parser.ml parser.mli lexer.ml .depend
+
+.depend: $(wildcard *.mli) *.ml
+	$(OCAMLDEP) $^ > .depend
+
+include .depend
+
 .ml.cmo:
-	$(CAMLC) -c $(COMPFLAGS) $<
+	$(OCAMLC) -c $(COMPFLAGS) $<
 
 .ml.cmx:
-	$(CAMLOPT) -c $(COMPFLAGS) $<
+	$(OCAMLOPT) -c $(COMPFLAGS) $<
 
 .mli.cmi:
-	$(CAMLOPT) -c $(COMPFLAGS) $<
+	$(OCAMLOPT) -c $(COMPFLAGS) $<
 
 .mll.ml:
-	ocamllex $<
+	$(OCAMLLEX) $<
 
 .mly.ml:
-	ocamlyacc -v $<
-
-test_parse: more.cmx form.cmx lexer.cmx parser.cmx tForm.cmx tab.cmx test_parse.cmx
-	$(CAMLOPT) -o $@ $^
+	$(OCAMLYACC) -v $<
 
 lexer.cmo: lexer.ml parser.cmi
 
@@ -47,5 +41,6 @@ lexer.cmx: lexer.ml parser.cmi
 
 parser.mli: parser.ml
 
-test: ${SRCS:.ml=.cmx}
-	$(CAMLOPT) -o test $^
+ppdltab: more.cmx form.cmx lexer.cmx parser.cmx tForm.cmx tab.cmx ppdltab.cmx
+	$(OCAMLOPT) -o $@ $^
+	strip $@

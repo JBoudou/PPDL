@@ -61,10 +61,12 @@ let print_formula = Form.print_formula
 open TForm
 open Tab
 
+(*
 #trace proceed_todo
 #trace proceed_branching
 #trace proceed_successor
 #trace proceed_waiting
+*)
 
 let results =
   List.map (fun phi ->
