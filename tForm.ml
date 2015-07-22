@@ -1,3 +1,11 @@
+(** The extended PPDL language for the tableaux method,
+    with indices and placeholders.
+
+    There is no choice for now.
+
+    @author Joseph Boudou
+*)
+
 open More
 
 type prog =
@@ -13,8 +21,6 @@ and form =
   | Diam of prog * form
   | PH of Dir.t * int
 
-type t = form
-
 let neg = function
   | Neg phi -> phi
   | phi -> Neg phi
@@ -24,6 +30,7 @@ let top = neg Bot
 let conj phi psi = Diam (Test phi, psi)
 let disj phi psi = neg (conj (neg phi) (neg psi))
 
+(** Translate a choice-free {!Form} formula into a TForm one. *)
 let translate f =
   let rec trans_form i = function
     | Form.Var s -> (i, Var s)
@@ -81,6 +88,8 @@ let rec size =
   | Iter alpha ->
       if (size alpha) = Zero then Zero else More
 
+(** Replace each occurence of programs of the form [Iter alpha] by [Test top].
+*)
 let rec desiter = function
   | Iter _ -> Test top
   | Seq (alpha, beta)  -> Seq (desiter alpha, desiter beta)

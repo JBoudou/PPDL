@@ -1,37 +1,68 @@
+(** Extension of the Pervasive module.
+ 
+    @author Joseph Boudou
+ *)
+
+(** Return the first integer wich is not null.
+    Usefull to build comparators.
+    @deprecated
+ *)
 let rec chain_compare = function
   | [] -> 0
   | h::t ->
       let cmp = Lazy.force h in
       if cmp != 0 then cmp else chain_compare t
 
+(** Implication boolean operator.
+    The interpretation is sequential.
+ *)
 let ( --> ) a b = (not a) || b
 
 module List
 = struct
   include List
 
-  let compare elt_cmp la lb =
-    let rec aux la lb = match (la,lb) with
-      | ([], []) -> 0
-      | (h1::t1, h2::t2) -> chain_compare [lazy (elt_cmp h1 h2); lazy (aux t1 t2)]
-      | _ -> failwith "More.List.compare impossible"
-    in chain_compare [lazy (length la - length lb); lazy (aux la lb)]
-
+  (** Apply the function to all unordered non-identity pairs from the list.
+      For instance,
+      [fold_unordered_distinct_pair (fun acc a b -> (a,b)::acc) [] [1;2;3]]
+      produces [ [(3, 1); (2, 1); (3, 2)] ].
+    *)
   let rec fold_unordered_distinct_pair fct acc = function
     | [] -> acc
     | h::t -> fold_left (fun a v -> fct a v h) (fold_unordered_distinct_pair fct acc t) t
 
+  (** Produce all the (reversed) lists constructed by selecting one side of each
+      pair in the initial list.
+   *)
   let all_choices chlst =
     let aux acc (a,b) =
       List.fold_left (fun acc lst -> (a::lst)::(b::lst)::acc) [] acc
     in
     List.fold_left aux [[]] chlst
 
+  (** Fold without accumulator.
+      If the list is empty, returns the second argument.
+      For instance,
+      [fold_notnil (+) 10 [1;2;3]] produces [6].
+  *)
+  let fold_notnil fct default = function
+    | [] -> default
+    | h::t -> List.fold_left fct h t
+
+  (** Apply the given function to each element of
+      the cartesian product of the two given lists,
+      returning the list of results.
+  *)
+  let product fct la lb =
+    List.fold_left  (fun acc1 v1 ->
+                      List.fold_left (fun acc2 v2 -> (fct v1 v2)::acc2) acc1 lb)
+                    [] la
 end
 
 module Format = struct
   include Format
 
+  (** Print a list as in OCaml. *)
   let pp_print_list print_elt fmt lst =
     let rec aux = function
       | [] -> ()

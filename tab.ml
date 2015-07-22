@@ -1,5 +1,12 @@
+(** The tableaux method rules and strategy.
+ 
+    @author Joseph Boudou
+*)
+
 open More
 open TForm
+
+(** {2 Types} *)
 
 type separation = Forw | Back
 
@@ -13,27 +20,10 @@ module JudgmentSet = Set.Make (struct
   let compare = Pervasives.compare
 end)
 
-module IntString = struct
+module IntStringSet = Set.Make (struct
   type t = int * string
   let compare = Pervasives.compare
-end
-
-module IntStringSet = Set.Make (IntString)
-module IntStringMap = Map.Make (IntString)
-
-module DoubleInt = struct
-  type t = int * int
-  let compare = Pervasives.compare
-end
-
-module DoubleIntSet = Set.Make (DoubleInt)
-
-module DoubleProg = struct 
-  type t = TForm.prog * TForm.prog
-  let compare = Pervasives.compare
-end
-
-module DoubleProgSet = Set.Make (DoubleProg)
+end)
 
 module FormSet = Set.Make (TForm.Formula)
 module FormSetSet = Set.Make (FormSet)
@@ -43,37 +33,51 @@ module IntProgMap = Map.Make (struct
   let compare = Pervasives.compare
 end)
 
+(** {2 State} *)
+
+(** State of a tableaux procedure. *)
 type tableau = {
   (* active judgments *)
-  todo      : judgment list;
-  branching : judgment list;
-  successor : judgment list;
-  waiting   : judgment list;
+  todo      : judgment list; (** All judgments to be handle. *)
+  branching : judgment list; (** Judgments which could add branches. *)
+  successor : judgment list; (** Judgments which will add new model states. *)
+  waiting   : judgment list; (** Delayed judgments (not involving the current
+                                 node). *)
   (* var prop *)
-  var_pos : IntStringSet.t;
-  var_neg : IntStringSet.t;
+  var_pos : IntStringSet.t; (** Map positive propositional variables to model
+                                states. *)
+  var_neg : IntStringSet.t; (** Map negative propositional variables to model
+                                states. *)
   (* universals *)
-  box_atom_form : TForm.form list StringMap.t;
-  box_atom_succ :        int list StringMap.t;
-  box_cpar_forw : (TForm.prog * int * TForm.prog) list;
-  box_cpar_back :       (TForm.prog * TForm.prog) list;
-  box_sep_forw : (int * int) list;
-  box_sep_back : (int * int) list;
-  box_cpar_left   : IntSet.t IntMap.t;
-  box_cpar_right  : IntSet.t IntMap.t;
-  g_par_form : TForm.form IntMap.t;
+  box_atom_form : TForm.form list StringMap.t; (** Formulas to propagate from the
+                                current state through atomic programs. *)
+  box_atom_succ :        int list StringMap.t; (** Successor states to the
+                                current state by atomic programs. *)
+  box_cpar_forw : (TForm.prog * int * TForm.prog) list; (** Formulas to
+                                propagate from the current state through forward
+                                decomposition. *)
+  box_cpar_back :       (TForm.prog * TForm.prog) list; (** Formulas to 
+                                propagate from the current state through
+                                backward decomposition. *)
+  box_sep_forw : (int * int) list;  (** The forward  separation judgments. *)
+  box_sep_back : (int * int) list;  (** The backward separation judgments. *)
+  box_cpar_left   : IntSet.t IntMap.t; (** Map left  placeholders to states. *)
+  box_cpar_right  : IntSet.t IntMap.t; (** Map right placeholders to states. *)
+  g_par_form : TForm.form IntMap.t; (** Map formulas to indices. *)
   (* state *)
-  current : int;
-  fresh : int;
-  proceeded : JudgmentSet.t;
-  suspended: int IntMap.t;
-  terminated : IntSet.t;
+  current : int;              (** The current state. *)
+  fresh : int;                (** The next fresh state. *)
+  proceeded : JudgmentSet.t;  (** Judgments already proceeded by {!proceed_todo}.*)
+  suspended: int IntMap.t;    (** Map the holding state to suspended states. *)
+  terminated : IntSet.t;      (** States proceeded by {!proceed_waiting}. *)
   (* loop check *)
-  checked : bool;
-  check_main : FormSetSet.t;
-  check_iter : FormSetSet.t IntProgMap.t;
+  checked : bool;             (** Whether the current state has alread passed the
+                                  checkpoint. *)
+  check_main : FormSetSet.t;              (** Check set for main states. *)
+  check_iter : FormSetSet.t IntProgMap.t; (** Check set for iter states. *)
 }
 
+(** Create the initial state of a tableaux procedure for the given formula. *)
 let init phi = {
   todo      = [Node (0, phi)];
   branching = [];
@@ -100,10 +104,9 @@ let init phi = {
   check_iter = IntProgMap.empty;
 }
 
-exception Nothing_Todo
-exception No_rule of judgment
-
-let select tab ncur =
+(** Update the tableau procedure state by choosing the given state as the new
+    current state. *)
+let select tab (ncur:int) =
   let partition = function
     | Node (x, _)     -> x = ncur
     | Edge (x,_,_)    -> x = ncur
@@ -130,6 +133,18 @@ let select tab ncur =
       checked = false;
   }
 
+(** {2 Auxiliary}
+    The proceed functions are called in the following order:
+    {!proceed_todo}, {!proceed_first}, {!proceed_branching}, {!proceed_check},
+    {!proceed_successor} then {!proceed_waiting}.
+*)
+
+exception No_rule of judgment
+
+(* TODO: remove this debuging exception *)
+exception Argh of int list
+
+(** Produce the check set of the current state. *)
 let make_formset tab =
   let add_form_list acc = function
     | Node (x, phi) when x = tab.current -> FormSet.add phi acc
@@ -174,11 +189,10 @@ let make_formset tab =
   ]
 
 
-(* TODO: remove this debuging exception *)
-exception Argh of int list
-
 
 (* TODO: factor size computation *)
+
+(** Start proceeding [todo] by removing useless judgments. *)
 let rec proceed_todo tab =
   match tab.todo with
     | [] -> proceed_branching tab
@@ -196,6 +210,10 @@ let rec proceed_todo tab =
         else proceed_first {tab with
                               proceeded = JudgmentSet.add j tab.proceeded}
 
+(** Continue proceeding [todo].
+    Non-branching non-successor judgments are proceeded.
+    The other judgments are moved to the corresponding queue.
+*)
 and proceed_first tab =
   match tab.todo with
     | [] -> failwith "proceed_first"
@@ -434,6 +452,9 @@ and proceed_boxpar1F x alpha i beta phi tab =
 and branch lst =
   List.exists proceed_todo lst
 
+(** Proceed [branching].
+    Branching rules are rules which create new branches in the tableau.
+*)
 and proceed_branching tab =
   match tab.branching with
     | [] -> proceed_check tab
@@ -573,6 +594,7 @@ and proceed_boxpar0bot tab y z =
     (List.map (fun to_add -> {tab with todo = List.rev_append tab.todo to_add})
               todo_add)
 
+(** Check the termination conditions. *)
 and proceed_check tab =
   if tab.checked then proceed_successor tab else
   let rec find_blocking = function
@@ -645,6 +667,9 @@ and proceed_check tab =
   in find_iter_succ tab.successor
   )
 
+(** Proceed [successor].
+    A successor rule is a rule which adds new states in the model.
+*)
 and proceed_successor tab =
   match tab.successor with
     | [] -> proceed_waiting {tab with
@@ -675,6 +700,7 @@ and proceed_successor tab =
 
     | j::_ -> raise (No_rule j)
 
+(** Choose a new current state or succefully terminate. *)
 and proceed_waiting tab =
   let rec make_candidate acc n =
     if n < 0 then acc else
@@ -703,5 +729,8 @@ and proceed_waiting tab =
         proceed_todo (select tab (IntSet.choose selection))
         with Not_found -> raise (Argh (IntSet.elements tab.terminated))
 
+(** {2 Main} *)
+
+(** Compute whether the given formula is satisfiable. *)
 let resolve phi =
   proceed_todo (init (TForm.translate (Form.unchoice phi)))

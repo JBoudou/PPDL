@@ -1,3 +1,11 @@
+(** The PPDL full language.
+
+   This module implement the full PPDL language with iteration and
+   non-deterministic choice.
+  
+   @author Joseph Boudou
+*)
+
 type prog =
   | Atom of string
   | Seq of prog * prog
@@ -20,12 +28,16 @@ let top = neg Bot
 
 let diam alpha phi = neg (Box (alpha, neg phi))
 
+(** Implication. *)
 let imp phi psi = Box (Test phi, psi)
 
+(** Disjunction. *)
 let disj phi psi = imp (neg phi) psi
 
+(** Conjunction *)
 let conj phi psi = diam (Test phi) psi
 
+open More
 open Format
 
 let rec print_formula pp = function
@@ -81,6 +93,8 @@ and print_program pp = function
       print_progpar pp alpha;
       pp_print_string pp "||";
       print_progpar pp beta
+
+(** @private *)
 and print_progpar pp prog = match prog with
   | Seq (_,_)
   | Choice (_,_)
@@ -91,6 +105,7 @@ and print_progpar pp prog = match prog with
   | _ ->
       print_program pp prog
 
+(** @deprecated Should use same type as in TForm *)
 let rec size = function
   | Test _ -> 0
   | Atom _ -> 1
@@ -114,17 +129,13 @@ let rec size = function
         | (1,1) -> 1
         | _     -> 2 )
 
-(* Move it to More.List *)
-let fold_notnil fct default = function
-  | [] -> default
-  | h::t -> List.fold_left fct h t
+(** Produce an equivalent choice-free formula.
+    The resulting formula may be exponentialy bigger.
+*)
+let rec unchoice phi = List.fold_notnil disj Bot (unchoice_list_form phi)
 
-let product fct la lb =
-  List.fold_left  (fun acc1 v1 ->
-                    List.fold_left (fun acc2 v2 -> (fct v1 v2)::acc2) acc1 lb)
-                  [] la
-
-let rec unchoice_list_prog = function
+(** @private *)
+and unchoice_list_prog = function
   | Atom _ as a -> [a]
   | Test phi -> List.rev_map (fun psi -> Test psi) (unchoice_list_form phi)
   | Choice (alpha,beta) ->
@@ -145,15 +156,16 @@ let rec unchoice_list_prog = function
                                   beta lst)]
       )
   | Seq (alpha, beta) ->
-      product (fun a b -> Seq (a,b))  (unchoice_list_prog alpha)
+      List.product (fun a b -> Seq (a,b))  (unchoice_list_prog alpha)
                                       (unchoice_list_prog beta)
   | CPar (alpha, beta) ->
-      product (fun a b -> CPar (a,b)) (unchoice_list_prog alpha)
+      List.product (fun a b -> CPar (a,b)) (unchoice_list_prog alpha)
                                       (unchoice_list_prog beta)
+
+(** @private *)
 and unchoice_list_form = function
   | Box (alpha, phi) ->
       let nphi = unchoice phi in
       List.rev_map (fun beta -> Box (beta, nphi)) (unchoice_list_prog alpha)
   | Neg phi -> List.rev_map (fun psi -> neg psi) (unchoice_list_form phi)
   | phi -> [phi]
-and unchoice phi = fold_notnil disj Bot (unchoice_list_form phi)
