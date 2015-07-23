@@ -4,7 +4,7 @@ OCAMLDEP=ocamldep
 OCAMLLEX=ocamllex
 OCAMLYACC=ocamlyacc
 OCAMLDOC=ocamldoc
-OPTFLAGS=-p
+OPTFLAGS=
 
 .PHONY: all objs clean doc
 

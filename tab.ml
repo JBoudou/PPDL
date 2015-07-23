@@ -348,7 +348,7 @@ and proceed_first tab =
             (Edge (tab.fresh + 1, tab.fresh + 2, beta))::
             (Sepa (y, tab.fresh, tab.fresh + 2, Back))::t;
           fresh = tab.fresh + 3}
-    (* diam || 0. *)
+    (* diam || .0 *)
     | (Edge (x,y, CPar (alpha, i, beta)))::t
         when size beta = Zero ->
         proceed_todo {tab with
@@ -418,10 +418,14 @@ and proceed_first tab =
 
     (* move branching (for current) *)
 
-    | (Edge (x,y, Seq (alpha, beta)) as n)::t ->
+    | (Edge (x,y, Seq (_,_)) as j)::t ->
         proceed_todo {tab with
           todo = t;
-          branching = n::tab.branching}
+          branching = j::tab.branching}
+    | (Edge (x,y, CPar (_,_,_)) as j)::t ->
+        proceed_todo {tab with
+          todo = t;
+          branching = j::tab.branching}
 
     (* move successor *)
 
@@ -581,6 +585,82 @@ and proceed_branching tab =
           {tab with
             branching = t;
             todo = (Node (x, Neg (Diam (desiter gamma, top))))::tab.todo} ]
+
+    (* TODO: factor cases for diam ; and diam || *)
+
+    (* diam || 1 star *)
+    | (Edge (x,y, CPar (alpha, i, beta)))::t when size alpha = One ->
+        (* assumed that size beta = Some *)
+        branch [
+          {tab with
+            todo =
+              (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+              (Edge (tab.fresh,     tab.fresh + 2, alpha))::
+              (Edge (tab.fresh + 1, tab.fresh + 1,  beta))::
+              (Sepa (y, tab.fresh + 2, tab.fresh + 1, Back))::tab.todo;
+            branching = t;
+            fresh = tab.fresh + 3};
+          {tab with
+            todo =
+              (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+              (Edge (tab.fresh,     tab.fresh + 2, alpha))::
+              (Edge (tab.fresh + 1, tab.fresh + 3,  beta))::
+              (Sepa (y, tab.fresh + 2, tab.fresh + 3, Back))::tab.todo;
+            branching = t;
+            fresh = tab.fresh + 4}
+        ]
+
+    (* diam || star 1 *)
+    | (Edge (x,y, CPar (alpha, i, beta)))::t when size beta = One ->
+        (* assumed that size alpha = Some *)
+        branch [
+          {tab with
+            todo =
+              (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+              (Edge (tab.fresh,     tab.fresh + 2, alpha))::
+              (Edge (tab.fresh + 1, tab.fresh + 1,  beta))::
+              (Sepa (y, tab.fresh + 2, tab.fresh + 1, Back))::tab.todo;
+            branching = t;
+            fresh = tab.fresh + 3};
+          {tab with
+            todo =
+              (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+              (Edge (tab.fresh,     tab.fresh + 2, alpha))::
+              (Edge (tab.fresh + 1, tab.fresh + 3,  beta))::
+              (Sepa (y, tab.fresh + 2, tab.fresh + 3, Back))::tab.todo;
+            branching = t;
+            fresh = tab.fresh + 4}
+        ]
+
+    (* diam || star star *)
+    | (Edge (x,y, CPar (alpha, i, beta)))::t when size beta = One ->
+        (* assumed that size alpha = Some *)
+        branch [
+          {tab with
+            todo =
+              (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+              (Edge (tab.fresh,     tab.fresh,    alpha))::
+              (Edge (tab.fresh + 1, tab.fresh + 2, beta))::
+              (Sepa (y, tab.fresh, tab.fresh + 2, Back))::tab.todo;
+            branching = t;
+            fresh = tab.fresh + 3};
+          {tab with
+            todo =
+              (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+              (Edge (tab.fresh,     tab.fresh + 2, alpha))::
+              (Edge (tab.fresh + 1, tab.fresh + 1,  beta))::
+              (Sepa (y, tab.fresh + 2, tab.fresh + 1, Back))::tab.todo;
+            branching = t;
+            fresh = tab.fresh + 3};
+          {tab with
+            todo =
+              (Sepa (x, tab.fresh, tab.fresh + 1, Forw))::
+              (Edge (tab.fresh,     tab.fresh + 2, alpha))::
+              (Edge (tab.fresh + 1, tab.fresh + 3,  beta))::
+              (Sepa (y, tab.fresh + 2, tab.fresh + 3, Back))::tab.todo;
+            branching = t;
+            fresh = tab.fresh + 4}
+        ]
 
     | j::_ -> raise (No_rule j)
 

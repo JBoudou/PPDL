@@ -18,6 +18,15 @@ let rec chain_compare = function
  *)
 let ( --> ) a b = (not a) || b
 
+(** Type identifying the side of a decomposition. *)
+module Dir = struct
+  type t = L | R
+
+  let other_dir = function
+    | L -> R
+    | R -> L
+end
+
 module List
 = struct
   include List
