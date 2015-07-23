@@ -1,0 +1,56 @@
+# PPDLTab
+
+
+## Presentation
+
+PPDLTab is a tableaux method based satisfiability prover
+for the propositional dynamic logic with parallel composition
+interpreted in the class of deterministic frames.
+
+This implementation is a proof-of-concept.
+Almost no optimizations have been done.
+
+
+## Usage
+
+This program have been compiled and tested successfully
+on Linux amd64 with OCaml version 4.02.1.
+
+Type "make" to produce the executable ./ppdltab.
+
+The program reads PPDL formulas on standart input
+and tests them for satisfiability.
+
+
+## Format
+
+The format of formulas is compatible with
+the format used by F. Widmann and R. Goré's PDL prover.
+Here is a non formal grammar
+(see lexer.mll and parser.mly for a detailed grammar).
+
+<prog> :=
+  <prog> + <prog>
+  <prog> ; <prog>
+  * <prog>
+  ? <prog>
+  <prog> || <prog>
+  <ident>
+
+<form> :=
+  <form> <=> <form>
+  <form>  => <form>
+  <form>  |  <form>
+  <form>  &  <form>
+  < <prog> > <form>
+  [ <prog> ] <form>
+  ~ <form>
+  True
+  False
+  <ident>
+
+<ident> only contains characters from [a-z, A-Z, 0-9, _, '].
+
+Parentheses can be used in both programs and formulas
+to avoid ambiguities.
+For examples, look at the formulas directory.

@@ -55,6 +55,9 @@ let t13 = conj
   (Box (Iter (Seq (Iter b, Iter a)), Neg q))
   (diam (Iter (Seq (Iter a, Iter b))) q)
 
+let t14 = diam (CPar (Seq (a,Choice (b,c)), Iter (Choice (a, b)))) p
+
+
 (* TODO: continue *)
 
 let print_formula = Form.print_formula
@@ -74,7 +77,7 @@ let results =
               Format.pp_print_newline Format.std_formatter () ;
               proceed_todo (init (translate phi))) 
            [  t1 ;
-(*              t2 ;
+              t2 ;
               t3 ;
               t4 ;
               t5 ;
@@ -85,7 +88,8 @@ let results =
               t10 ;
               t11 ;
               t12 ;
-*)              t13 ;
+              t13 ;
+              t14 ;
            ]
 
 let () =
