@@ -125,8 +125,6 @@ let select tab (ncur:int) =
       box_cpar_back = [];
       box_sep_forw = [];
       box_sep_back = [];
-      box_cpar_left  = IntMap.empty;
-      box_cpar_right = IntMap.empty;
       current = ncur;
       proceeded  = JudgmentSet.empty;
       suspended = IntMap.remove ncur tab.suspended;
@@ -633,8 +631,8 @@ and proceed_branching tab =
         ]
 
     (* diam || star star *)
-    | (Edge (x,y, CPar (alpha, i, beta)))::t when size beta = One ->
-        (* assumed that size alpha = Some *)
+    | (Edge (x,y, CPar (alpha, i, beta)))::t ->
+        (* assumed that size alpha = Some and size beta = Some *)
         branch [
           {tab with
             todo =
