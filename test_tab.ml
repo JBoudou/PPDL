@@ -1,6 +1,3 @@
-#load "form.cmo"
-#load "tab.cmo"
-
 open More
 open Form
 
@@ -49,6 +46,9 @@ let t9 =
 
 let t10 = Box (Iter a, diam a top)
 
+let t10b = let alpha = CPar (a,b) in
+  Box (Iter alpha, diam alpha top)
+
 let t11 = conj
   (Box (Iter a, disj (neg p) (neg q)))
   (diam (Iter a) (conj p q))
@@ -91,8 +91,8 @@ let t18b = conj
 let t19 = conj
   (Box (a, diam (Seq (Test (Box (CPar (a,b), neg p)), b)) top))
   (conj
-    (diam a top)
     (diam (Seq (a, Seq (Test top, CPar (a, b)))) p)
+    (diam a top)
   )
 
 (* TODO: continue *)
@@ -101,12 +101,12 @@ let print_formula = Form.print_formula
 open TForm
 open Tab
 
-
+(*
 #trace proceed_todo
 #trace proceed_branching
 #trace proceed_successor
 #trace proceed_waiting
-
+*)
 
 let results =
   List.map (fun phi ->
@@ -117,7 +117,7 @@ let results =
               Format.pp_print_newline Format.std_formatter () ;
               result)
            [  t1 ;
-(*              t2 ;
+              t2 ;
               t2b ;
               t3 ;
               t4 ;
@@ -133,6 +133,7 @@ let results =
               t8 ;
               t9 ;
               t10 ;
+              t10b ;
               t11 ;
               t12 ;
               t13 ;
@@ -143,7 +144,7 @@ let results =
               t17b ;
               t18 ;
               t18b ;
-*)              t19 ;
+              t19 ;
            ]
 
 let () =

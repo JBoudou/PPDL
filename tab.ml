@@ -444,7 +444,7 @@ and proceed_first tab =
 and proceed_boxpar1F x alpha i beta phi tab =
   let aux acc (y,z) =
     (Node (y, Neg (Diam (alpha, Neg (PH (Dir.L, i))))))::
-    (Node (y, Neg (Diam (beta,  Neg (PH (Dir.R, i))))))::acc
+    (Node (z, Neg (Diam (beta,  Neg (PH (Dir.R, i))))))::acc
   in proceed_todo {tab with
     todo = List.fold_left aux tab.todo tab.box_sep_forw;
     box_cpar_forw = (alpha, i, beta)::tab.box_cpar_forw;
@@ -721,7 +721,7 @@ and proceed_check tab =
     | None -> (
   let check_set = make_formset tab in
   if  (not (StringMap.is_empty tab.box_atom_succ)) ||
-      (tab.box_cpar_forw != []) || (tab.box_cpar_back != [])
+      (tab.box_sep_forw != []) || (tab.box_sep_back != [])
   then proceed_successor {tab with
           checked = true;
           check_main = FormSetSet.add check_set tab.check_main;
