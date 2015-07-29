@@ -88,18 +88,25 @@ let t18b = conj
   (diam (CPar (a, Iter b)) (Box (CPar (Test top, Test (Neg p)), Bot)))
   (Box (CPar (Test top, Test (diam (Iter b) p)), Bot))
 
+let t19 = conj
+  (Box (a, diam (Seq (Test (Box (CPar (a,b), neg p)), b)) top))
+  (conj
+    (diam a top)
+    (diam (Seq (a, Seq (Test top, CPar (a, b)))) p)
+  )
+
 (* TODO: continue *)
 
 let print_formula = Form.print_formula
 open TForm
 open Tab
 
-(*
+
 #trace proceed_todo
 #trace proceed_branching
 #trace proceed_successor
 #trace proceed_waiting
-*)
+
 
 let results =
   List.map (fun phi ->
@@ -110,7 +117,7 @@ let results =
               Format.pp_print_newline Format.std_formatter () ;
               result)
            [  t1 ;
-              t2 ;
+(*              t2 ;
               t2b ;
               t3 ;
               t4 ;
@@ -136,6 +143,7 @@ let results =
               t17b ;
               t18 ;
               t18b ;
+*)              t19 ;
            ]
 
 let () =

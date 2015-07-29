@@ -720,6 +720,13 @@ and proceed_check tab =
           suspended = IntMap.add tab.current blocking tab.suspended}
     | None -> (
   let check_set = make_formset tab in
+  if  (not (StringMap.is_empty tab.box_atom_succ)) ||
+      (tab.box_cpar_forw != []) || (tab.box_cpar_back != [])
+  then proceed_successor {tab with
+          checked = true;
+          check_main = FormSetSet.add check_set tab.check_main;
+        }
+  else
   let rec find_iter_succ = function
     | [] ->
         if FormSetSet.mem check_set tab.check_main
