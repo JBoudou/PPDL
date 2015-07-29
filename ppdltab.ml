@@ -8,8 +8,8 @@ let _ =
     let lexbuf = Lexing.from_channel stdin in
     while true do
       let phi = Parser.form Lexer.token lexbuf in
-      Form.print_formula stdout phi ; Format.pp_print_newline stdout () ;
 (*
+      Form.print_formula stdout phi ; Format.pp_print_newline stdout () ;
       Form.print_formula stdout (Form.unchoice phi) ; Format.pp_print_newline stdout () ;
 *)
       Format.pp_print_int stdout !cpt ; cpt := !cpt + 1 ;
