@@ -41,6 +41,7 @@ type tableau = {
   (* active judgments *)
   todo      : judgment list; (** All judgments to be handle. *)
   branching : judgment list; (** Judgments which could add branches. *)
+  diam_iter : (TForm.prog * int) option;
   successor : judgment list; (** Judgments which will add new model states. *)
   waiting   : judgment list; (** Delayed judgments (not involving the current
                                  node). *)
@@ -72,17 +73,19 @@ type tableau = {
   suspended: int IntMap.t;    (** Map the holding state to suspended states. *)
   terminated : IntSet.t;      (** States proceeded by {!proceed_waiting}. *)
   (* loop check *)
-  check_set : FormSet.t option;             (** TODO Whether the current state has alread passed the
+  checked_block : bool;             (** TODO Whether the current state has alread passed the
                                   checkpoint. *)
-  check_main : TForm.form list FormSetMap.t;              (** TODO Check set for main states. *)
+  checked_term : bool;
+  check_set : FormSet.t option;
+  check_main : FormSetSet.t;              (** TODO Check set for main states. *)
   check_iter : FormSetSet.t IntProgMap.t; (** Check set for iter states. *)
-  check_accelerated : bool;
 }
 
 (** Create the initial state of a tableaux procedure for the given formula. *)
 let init phi = {
   todo      = [Node (0, phi)];
   branching = [];
+  diam_iter = None;
   successor = [];
   waiting   = [];
   var_pos = IntStringSet.empty;
@@ -101,10 +104,11 @@ let init phi = {
   proceeded  = JudgmentSet.empty;
   suspended  = IntMap.empty;
   terminated = IntSet.empty;
+  checked_block = false;
+  checked_term  = false;
   check_set = None;
-  check_main = FormSetMap.empty;
+  check_main = FormSetSet.empty;
   check_iter = IntProgMap.empty;
-  check_accelerated = false;
 }
 
 (** Update the tableau procedure state by choosing the given state as the new
@@ -117,40 +121,12 @@ let select tab (ncur:int) =
   in
   let (ntodo, nwaiting) = List.partition partition tab.waiting
   in
-  let append_check_main set =
-    let box_set =
-      List.fold_left (|>) FormSet.empty
-      [
-        StringMap.fold
-          (fun alpha lst acc ->
-            List.fold_left
-              (fun acc phi -> FormSet.add (Neg (Diam (Atom alpha, neg phi))) acc)
-              acc lst)
-          tab.box_atom_form ;
-        (fun acc ->
-          List.fold_left
-            (fun acc (alpha, i, beta) ->
-              FormSet.add
-                (Neg (Diam (CPar (alpha, i, beta),
-                            neg (IntMap.find i tab.g_par_form))))
-                acc)
-            acc tab.box_cpar_forw );
-        (fun acc ->
-          List.fold_left
-            (fun acc (alpha, beta) ->
-              FormSet.add
-                (Neg (Diam (CPar (alpha, 0, beta), top)))
-                acc)
-            acc tab.box_cpar_back );
-      ]
-    in
-    FormSetMap.add set (FormSet.elements (FormSet.diff box_set set)) tab.check_main
-  in
   let not_terminated = not (IntSet.mem tab.current tab.terminated)
   in
   { tab with
       todo = ntodo;
       branching = [];
+      diam_iter = None;
       successor = [];
       waiting = nwaiting;
       var_pos = if not_terminated then tab.var_pos
@@ -170,15 +146,14 @@ let select tab (ncur:int) =
       current = ncur;
       proceeded  = JudgmentSet.empty;
       suspended = IntMap.remove ncur tab.suspended;
+      checked_block = false;
+      checked_term  = false;
       check_set = None;
-      check_main = if tab.check_accelerated then tab.check_main else
-        (match tab.check_set with Some s -> append_check_main s | _ -> tab.check_main);
-      check_accelerated = false;
   }
 
 (** {2 Auxiliary}
     The proceed functions are called in the following order:
-    {!proceed_todo}, {!proceed_first}, {!proceed_branching}, {!proceed_check},
+    {!proceed_todo}, {!proceed_first}, {!proceed_branching}, 
     {!proceed_successor} then {!proceed_waiting}.
 *)
 
@@ -487,10 +462,10 @@ and proceed_first tab =
         proceed_todo {tab with
           todo = t;
           successor = j::tab.successor}
-    | (Edge (x,y, Iter alpha) as n)::t when x != y ->
+    | (Edge (x,y, Iter alpha))::t when x != y ->
         proceed_todo {tab with
           todo = t;
-          successor = n::tab.successor}
+          diam_iter = Some (alpha, y)}
 
     (* error *)
 
@@ -515,7 +490,7 @@ and branch lst =
 *)
 and proceed_branching tab =
   match tab.branching with
-    | [] -> proceed_check tab
+    | [] -> check_blocked tab
 
     (* new termination *)
     | (Node (x, Diam (Iter alpha, phi)))::t
@@ -739,13 +714,9 @@ and proceed_boxpar0bot tab y z =
     (List.map (fun to_add -> {tab with todo = List.rev_append tab.todo to_add})
               todo_add)
 
-(** Check the termination conditions. *)
-and proceed_check tab =
-  match tab.check_set with
-    | Some _ -> proceed_successor tab
-    | None -> check_blocked tab
-
+(* TODO: check_blocked is called twice if proceed_diam_iter proceeds. Fix that. *)
 and check_blocked tab =
+  if tab.checked_block then proceed_diam_iter tab else
   let rec find_blocking = function
     | [] -> None
     | (Sepa (x,y,z,_))::_ when  (not (IntSet.mem x tab.terminated)) &&
@@ -759,10 +730,15 @@ and check_blocked tab =
           todo = [];
           branching = [];
           successor = [];
+          checked_block = true;
           waiting = List.fold_left List.rev_append
                     tab.waiting 
                     [ tab.todo;
                       tab.branching;
+                      (match tab.diam_iter with
+                        | Some (alpha, y) -> [Edge (tab.current, y, Iter alpha)]
+                        | None -> []
+                      );
                       tab.successor;
                       StringMap.fold
                         (fun prog lst acc ->
@@ -788,57 +764,58 @@ and check_blocked tab =
                         (fun (x,y) -> Sepa (tab.current, x, y, Back))
                         tab.box_sep_back;
                     ];
-          suspended = IntMap.add tab.current blocking tab.suspended}
-    | None ->
-        if tab.successor = []
-        then proceed_waiting {tab with
-          terminated = IntSet.add tab.current tab.terminated;
+          suspended = IntMap.add tab.current blocking tab.suspended;
         }
-        else check_termination tab
+    | None -> proceed_diam_iter {tab with
+                checked_block = true; }
 
-and check_termination tab =
-  let check_set = make_formset tab in
-  let basecase tab =
-    match (try Some (FormSetMap.find check_set tab.check_main) with Not_found -> None) with
-      | Some box_lst -> proceed_todo {tab with
-                          todo = List.fold_left
-                                  (fun acc f -> (Node (tab.current, f))::acc)
-                                  tab.todo box_lst;
-                          successor = [];
-                          check_set = Some check_set;
-                          check_accelerated = true;
-                        }
-      | None -> proceed_successor {tab with
-                          check_set = Some check_set}
-  in
-  if  (not (StringMap.is_empty tab.box_atom_succ)) || (tab.box_sep_forw != [])
-  then basecase tab
-  else
-  let rec find_iter_succ = function
-    | [] ->
-        if (tab.box_sep_back != []) then basecase tab else
-        if FormSetMap.mem check_set tab.check_main
-        then proceed_waiting {tab with
-          terminated = IntSet.add tab.current tab.terminated;
-          check_accelerated = true;
-        }
-        else proceed_successor {tab with
-                          check_set = Some check_set}
-    | (Edge (x, y, Iter alpha))::t ->
+and proceed_diam_iter tab =
+  match tab.diam_iter with
+    | None -> check_termination tab
+    | Some (alpha, y) ->
+        (* check loop *)
+        let check_set = make_formset tab in
         let checksetset =
           try IntProgMap.find (y,alpha) tab.check_iter
           with Not_found -> FormSetSet.empty
         in
         if FormSetSet.mem check_set checksetset then false
-        else proceed_successor {tab with
-          check_set = Some check_set;
-          check_iter = IntProgMap.add (y,alpha)
-                                      (FormSetSet.add check_set checksetset) 
-                                      tab.check_iter
-        }
-    | _::t -> find_iter_succ t
-  in find_iter_succ tab.successor
+        else
+          let x = tab.current in
+          branch [
+            {tab with
+              todo = (Edge (x,y, alpha))::tab.todo;
+              check_iter = IntProgMap.remove (y, alpha) tab.check_iter;
+              diam_iter = None;
+              check_set = if direct alpha then Some check_set else None;
+            };
+            {tab with
+              todo =  (Edge (x, tab.fresh, alpha))::
+                      (Edge (tab.fresh, y, Iter alpha))::tab.todo;
+              fresh = tab.fresh + 1;
+              check_iter = IntProgMap.add (y,alpha)
+                                          (FormSetSet.add check_set checksetset) 
+                                          tab.check_iter;
+              diam_iter = None;
+              check_set = if direct alpha then Some check_set else None;
+            } ]
 
+and check_termination tab =
+  if tab.checked_term then proceed_successor tab else
+  let check_set = match tab.check_set with
+    | Some set -> set
+    | None -> make_formset tab
+  in
+  if FormSetSet.mem check_set tab.check_main
+  then proceed_waiting {tab with
+    checked_term = true;
+    terminated = IntSet.add tab.current tab.terminated;
+    successor = [];
+  }
+  else proceed_successor {tab with
+    checked_term = true;
+    check_main = FormSetSet.add check_set tab.check_main;
+  }
 
 (** Proceed [successor].
     A successor rule is a rule which adds new states in the model.
@@ -855,21 +832,6 @@ and proceed_successor tab =
           successor = t;
           todo = (Edge (x, tab.fresh, alpha))::(Node (tab.fresh, phi))::tab.todo;
           fresh = tab.fresh + 1}
-
-    (* diam star diff *)
-    | (Edge (x,y, Iter alpha))::t ->
-        (* assumed size alpha != zero *)
-        branch [
-          {tab with
-            successor = t;
-            todo = (Edge (x,y, alpha))::tab.todo;
-            check_iter = IntProgMap.remove (y, alpha) tab.check_iter;
-          };
-          {tab with
-            successor = t;
-            todo =  (Edge (x, tab.fresh, alpha))::
-                    (Edge (tab.fresh, y, Iter alpha))::tab.todo;
-            fresh = tab.fresh + 1} ]
 
     | j::_ -> raise (No_rule j)
 

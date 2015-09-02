@@ -42,6 +42,9 @@ open More
 let seq_list =
   List.fold_notnil (fun a b -> Seq (a,b)) (Test top)
 
+let conj_list =
+  List.fold_notnil conj top
+
 open Format
 
 let rec print_formula pp = function
