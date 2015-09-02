@@ -88,6 +88,13 @@ let rec size =
   | Iter alpha ->
       if (size alpha) = Zero then Zero else More
 
+(* A program is direct if it can not add a formula to the current state *)
+let rec direct = function
+  | Test _ -> false
+  | Seq (alpha, _)  -> direct alpha
+  | Iter alpha      -> direct alpha
+  | _ -> true
+
 (** Replace each occurence of programs of the form [Iter alpha] by [Test top].
 *)
 let rec desiter = function

@@ -38,6 +38,10 @@ let disj phi psi = imp (neg phi) psi
 let conj phi psi = diam (Test phi) psi
 
 open More
+
+let seq_list =
+  List.fold_notnil (fun a b -> Seq (a,b)) (Test top)
+
 open Format
 
 let rec print_formula pp = function

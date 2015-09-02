@@ -95,18 +95,27 @@ let t19 = conj
     (diam a top)
   )
 
+let t20 = conj
+  (Box (Iter a, conj
+    (diam (Seq (Iter (Seq (Test (disj (Box (a, p)) (Box (a, neg p))), b)), c)) top)
+    (Box (c, Bot))
+  ))
+  (diam (seq_list [a; Test p; a; Test p; a]) (neg p))
+
+let t20b = conj
+  (Box (Iter a, diam (Seq (Test (disj (Box (a, p)) (Box (a, neg p))), b)) top))
+  (diam (seq_list [a; Test p; a; Test p; a]) (neg p))
+
 (* TODO: continue *)
 
 let print_formula = Form.print_formula
 open TForm
 open Tab
 
-(*
 #trace proceed_todo
 #trace proceed_branching
 #trace proceed_successor
 #trace proceed_waiting
-*)
 
 let results =
   List.map (fun phi ->
@@ -117,7 +126,7 @@ let results =
               Format.pp_print_newline Format.std_formatter () ;
               result)
            [  t1 ;
-              t2 ;
+(*              t2 ;
               t2b ;
               t3 ;
               t4 ;
@@ -145,6 +154,8 @@ let results =
               t18 ;
               t18b ;
               t19 ;
+*)              t20 ;
+              t20b ;
            ]
 
 let () =

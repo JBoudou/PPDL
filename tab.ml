@@ -470,6 +470,17 @@ and proceed_first tab =
           todo = t;
           branching = j::tab.branching}
 
+    (* new termination *)
+    | (Node (x, Diam (Seq (alpha, beta), phi)))::t
+      when not (direct alpha) ->
+        proceed_todo {tab with
+          todo = Node (x, Diam (alpha, Diam (beta, phi)))::t}
+    | (Node (x, Diam (Iter alpha, phi)) as j)::t
+      when not (direct alpha) ->
+        proceed_todo {tab with
+          todo = t;
+          branching = j::tab.branching}
+
     (* move successor *)
 
     | (Node (x, Diam (_, _)) as j)::t ->
@@ -505,6 +516,17 @@ and branch lst =
 and proceed_branching tab =
   match tab.branching with
     | [] -> proceed_check tab
+
+    (* new termination *)
+    | (Node (x, Diam (Iter alpha, phi)))::t
+      when not (direct alpha) ->
+        branch [
+          {tab with
+            branching = t;
+            todo = (Node (x, phi))::tab.todo};
+          {tab with
+            branching = t;
+            todo = (Node (x, Diam (alpha, Diam (Iter alpha, phi))))::tab.todo}]
 
     (* diam star *)
     | (Node (x, Diam (alpha, phi)) as j)::t ->
